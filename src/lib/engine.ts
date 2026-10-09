@@ -23,7 +23,7 @@ export function assessPractice(context: Context,reply: string): Assessment {
     if(fact.category==="responsibility" && /not responsible|priya owns|wrong person/.test(text)) {value=/priya owns/.test(text)?"Priya owns lead routing (buyer-reported; identity unverified)":"Contact is not responsible for lead routing";scope="contact";quote=reply;}
     if(quote) {
       validateQuote(quote,reply);
-      const relation=tentative?"unclear":scope!==fact.scope?"new_information":"contradicted";
+      const relation=fact.value===value?"supported":tentative?"unclear":scope!==fact.scope?"new_information":"contradicted";
       result.corrections.push({id:`correction-${fact.id}`,factId:fact.id,category:fact.category,scope:tentative?"unknown":scope,relation,replacementValue:tentative?null:value,quote,summary:tentative?"Possible future change; current fact remains unconfirmed.":`${fact.field}: ${value}. Buyer-reported, not independently verified.`});
     }
   }
@@ -55,7 +55,7 @@ export function propose(context: Context,assessment: Assessment, hubspotSupporte
   if(assessment.outcome==="ambiguous"&&!actions.length) actions.push({id:"review-ambiguous",type:"human_review",reason:"The reply is unclear or contains untrusted instructions. No record change is proposed."});
   return {actions,impacts};
 }
-export function evaluatePractice(context:Context,reply:string,hubspotSupported:boolean): Omit<Review,"id"|"sellerId"|"companyId"|"sourceReplyId"|"createdAt"|"latencyMs"> {
+export function evaluatePractice(context:Context,reply:string,hubspotSupported:boolean): Pick<Review,"inputFingerprint"|"reply"|"hubspotSupported"|"scenarioId"|"assessment"|"actions"|"impacts"|"state"> {
   if(!reply.trim()||reply.length>12000) throw new Error("Enter a reply between 1 and 12,000 characters");
   const assessment=assessPractice(context,reply), proposed=propose(context,assessment,hubspotSupported);
   return {inputFingerprint:fingerprint(context,reply,hubspotSupported),reply,hubspotSupported,scenarioId:context.scenarioId,assessment,...proposed,state:"needs_review"};
