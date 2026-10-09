@@ -109,4 +109,81 @@ describe("repair relevance and reversal regressions", () => {
       db.close();
     }
   });
+  it("keeps a declined message repair outstanding after approving only the fact", async () => {
+    const db = openDatabase(":memory:");
+    try {
+      const first = await evaluate(db, "crm", scenarios[0].reply, true);
+      approve(db, {
+        reviewId: first.id,
+        scenarioId: "crm",
+        reply: first.reply,
+        hubspotSupported: true,
+        actionIds: first.actions
+          .filter((action) => action.type === "update_fact")
+          .map((action) => action.id),
+      });
+      const next = await evaluate(db, "crm", first.reply, true);
+      expect(next.assessment.outcome).toBe("no_correction");
+      expect(next.assessment.corrections).toEqual([]);
+      expect(
+        next.impacts.find((impact) => impact.messageId === "crm-dependent-0")
+          ?.affected,
+      ).toBe(true);
+      expect(
+        next.impacts.find((impact) => impact.messageId === "crm-general")
+          ?.affected,
+      ).toBe(false);
+      expect(next.actions.map((action) => action.type)).toEqual(["pause"]);
+      expect(
+        readContext(db, "crm").outreach.find(
+          (message) => message.id === "crm-sent",
+        )?.status,
+      ).toBe("sent");
+    } finally {
+      db.close();
+    }
+  });
+  it("reports no new correction when a reply confirms an already repaired fact", async () => {
+    const db = openDatabase(":memory:");
+    try {
+      const first = await evaluate(db, "crm", scenarios[0].reply, true);
+      approve(db, {
+        reviewId: first.id,
+        scenarioId: "crm",
+        reply: first.reply,
+        hubspotSupported: true,
+        actionIds: first.actions.map((action) => action.id),
+      });
+      const next = await evaluate(db, "crm", first.reply, true);
+      expect(next.assessment.outcome).toBe("no_correction");
+      expect(next.actions).toEqual([]);
+      expect(readContext(db, "crm").facts).toHaveLength(2);
+    } finally {
+      db.close();
+    }
+  });
+  it("distinguishes an edited fact from the buyer’s original statement", async () => {
+    const db = openDatabase(":memory:");
+    try {
+      const review = await evaluate(db, "crm", scenarios[0].reply, true);
+      const action = review.actions.find((a) => a.type === "update_fact")!;
+      approve(db, {
+        reviewId: review.id,
+        scenarioId: "crm",
+        reply: review.reply,
+        hubspotSupported: true,
+        actionIds: [action.id],
+        edits: { [action.id]: "Pipedrive" },
+      });
+      const context = readContext(db, "crm"),
+        updated = context.facts.find((f) => f.value === "Pipedrive")!;
+      expect(updated.operatorEdited).toBe(true);
+      expect(updated.buyerReported).toBe(false);
+      expect(
+        context.evidence.find((e) => e.id === updated.evidenceId)?.originalText,
+      ).toBe(scenarios[0].reply);
+    } finally {
+      db.close();
+    }
+  });
 });
