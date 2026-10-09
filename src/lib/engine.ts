@@ -78,6 +78,7 @@ export function assessPractice(context: Context, reply: string): Assessment {
       : "company";
   const tentative =
     /might|may move|considering|no decision|possibly|not sure/.test(text);
+  let supportedFact = false;
   for (const fact of context.facts.filter((f) => f.status !== "superseded")) {
     let value: string | null = null,
       quote: string | null = null,
@@ -132,14 +133,17 @@ export function assessPractice(context: Context, reply: string): Assessment {
     }
     if (quote) {
       validateQuote(quote, reply);
-      const relation =
-        fact.value === value
-          ? "supported"
-          : tentative
-            ? "unclear"
-            : scope !== fact.scope
-              ? "new_information"
-              : "contradicted";
+      const relation = tentative
+        ? "unclear"
+        : scope !== fact.scope
+          ? "new_information"
+          : fact.value === value
+            ? "supported"
+            : "contradicted";
+      if (relation === "supported") {
+        supportedFact = true;
+        continue;
+      }
       result.corrections.push({
         id: `correction-${fact.id}`,
         factId: fact.id,
@@ -160,7 +164,10 @@ export function assessPractice(context: Context, reply: string): Assessment {
       : result.corrections.length > 1
         ? "multiple"
         : "correction";
-  else if (!/still use salesforce|yes|thank|share an overview/.test(text))
+  else if (
+    !supportedFact &&
+    !/still use salesforce|yes|thank|share an overview/.test(text)
+  )
     result.outcome = /crm|salesforce|hubspot|project|routing|expan|hiring/.test(
       text,
     )
@@ -242,6 +249,30 @@ export function propose(
     );
     const discovery =
       message.dependencyDiscovery === "explicit" ? "explicit" : "inferred";
+    const usesSupersededFact = context.facts.some(
+      (fact) =>
+        fact.status === "superseded" &&
+        (message.factIds.includes(fact.id) ||
+          message.claims.some((claim) => claim.factIds.includes(fact.id))),
+    );
+    if (!corrections.length && usesSupersededFact) {
+      impacts.push({
+        messageId: message.id,
+        affected: true,
+        discovery,
+        rewriteEligible: false,
+        reason:
+          "This message still relies on research superseded by an earlier approved correction. Its repair remains outstanding.",
+      });
+      actions.push({
+        id: `pause-${message.id}`,
+        type: "pause",
+        messageId: message.id,
+        expectedVersion: message.version,
+        reason: "Pause the follow-up that still relies on superseded research.",
+      });
+      continue;
+    }
     if (
       !corrections.length ||
       (assessment.mode === "live" &&

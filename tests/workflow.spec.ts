@@ -170,3 +170,34 @@ test("server rejects cross-origin repair requests", async ({ request }) => {
   });
   expect(response.status()).toBe(403);
 });
+
+test("partial approval keeps the old follow-up flagged on later evaluation", async ({
+  page,
+}) => {
+  await load(page);
+  await evaluate(page);
+  await page.getByRole("checkbox", { name: /Save revised draft/ }).uncheck();
+  await page.getByRole("checkbox", { name: /Pause this follow-up/ }).uncheck();
+  await page.getByRole("button", { name: "Approve selected (1)" }).click();
+  await expect(page.getByText("CRM: HubSpot", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Evaluate reply" }).click();
+  await expect(
+    page.getByRole("heading", { name: "No correction detected", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "This message still relies on research superseded by an earlier approved correction.",
+      { exact: false },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Save revised draft", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Approve selected (1)" }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Revert this internal repair" })
+    .click();
+  await expect(page.getByText("CRM: HubSpot", { exact: true })).toHaveCount(0);
+});

@@ -375,7 +375,12 @@ export function approve(db: DatabaseSync, input: ApprovalInput): Review {
           supersedesFactId:
             original.scope === action.scope ? original.id : null,
           relatedFactId: original.id,
-          buyerReported: true,
+          buyerReported: !(
+            edits[action.id] && edits[action.id] !== action.newValue
+          ),
+          operatorEdited: Boolean(
+            edits[action.id] && edits[action.id] !== action.newValue,
+          ),
         };
         insertEntity(db, "facts", replacement);
         newFactIds[original.id] = replacement.id;

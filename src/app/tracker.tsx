@@ -401,10 +401,20 @@ export default function Tracker() {
                       <article key={fact.id} className="fact-card">
                         <div className="fact-title">
                           <span>{fact.field}</span>
-                          <Tag tone={fact.buyerReported ? "green" : "neutral"}>
-                            {fact.buyerReported
-                              ? "Buyer-reported"
-                              : "Research inference"}
+                          <Tag
+                            tone={
+                              fact.operatorEdited
+                                ? "amber"
+                                : fact.buyerReported
+                                  ? "green"
+                                  : "neutral"
+                            }
+                          >
+                            {fact.operatorEdited
+                              ? "Operator-edited"
+                              : fact.buyerReported
+                                ? "Buyer-reported"
+                                : "Research inference"}
                           </Tag>
                         </div>
                         <h3>{fact.value}</h3>
@@ -883,9 +893,11 @@ export default function Tracker() {
                         </div>
                         <small>
                           {f.scope} scope · v{f.version} ·{" "}
-                          {f.buyerReported
-                            ? "Buyer-reported"
-                            : "Original research"}
+                          {f.operatorEdited
+                            ? "Operator-edited"
+                            : f.buyerReported
+                              ? "Buyer-reported"
+                              : "Original research"}
                         </small>
                         <details>
                           <summary>Supporting evidence</summary>
