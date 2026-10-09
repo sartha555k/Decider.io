@@ -1,2 +1,4 @@
 import Tracker from "./tracker";
-export default function Home(){return <Tracker/>;}
+export default function Home() {
+  return <Tracker />;
+}

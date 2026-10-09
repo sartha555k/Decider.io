@@ -5,3 +5,5 @@ data/
 !.env.example
 *.tsbuildinfo
 coverage/
+playwright-report/
+test-results/
