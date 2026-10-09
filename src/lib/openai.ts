@@ -31,7 +31,7 @@ export function parseAnswers(payload:unknown,questions:Question[]):{answers:Map<
  return {answers,tokens:usage.input_tokens,model:root.model};
 }
 const choice=(name:string,instructions:string,values:(string|boolean)[]):Question=>({name,type:"choice",instructions,choices:values.map(value=>({value}))});
-function checkInput(input:string){if(input.length>48000)throw new Error("Relevant context is too large for one bounded evaluation");}
+function checkInput(input:string){if(Buffer.byteLength(input,"utf8")>64000)throw new Error("Relevant context is too large for one bounded evaluation");}
 function extraction(payload:unknown):{text:string;tokens:number} {
  const root=object(payload);if(root.status!=="completed"||typeof root.output_text!=="string"||!root.output_text.trim())throw new Error("Extraction was refused or incomplete");
  const usage=object(root.usage);if(typeof usage.input_tokens!=="number"||!Number.isInteger(usage.input_tokens)||usage.input_tokens<0)throw new Error("Missing generation usage");return {text:root.output_text,tokens:usage.input_tokens};
@@ -48,6 +48,8 @@ export function createTransport():Transport {
 }
 export function connectionStatus() {return {configured:Boolean(process.env.TRACKER_OPENAI_KEY||process.env.OPENAI_API_KEY),model:DECISION_MODEL,status:(process.env.TRACKER_OPENAI_KEY||process.env.OPENAI_API_KEY)?"Credential configured; model access unverified":"Live mode not configured",sdk:"7.32.0"};}
 export async function evaluateLive(ctx:Context,reply:string,support:boolean,transport:Transport,options:LiveOptions={}):Promise<Assessment> {
+ let decisionCalls=0,generationCalls=0;
+ const bounded:Transport={decide:request=>{checkInput(JSON.stringify(request));if(++decisionCalls>2)throw new Error("Decision call limit");return transport.decide(request);},generate:request=>{checkInput(JSON.stringify(request));if(++generationCalls>2)throw new Error("Generation call limit");return transport.generate(request);}};
  const result:Assessment={mode:"live",model:DECISION_MODEL,corrections:[],optOut:false,outcome:"no_correction",judgments:[],warnings:["Model probabilities are estimates, not guarantees."],usage:{decisionInputTokens:0,generationInputTokens:0},draftSuggestions:{},impactOverrides:[]};
  try {
   const facts=ctx.facts.filter(f=>f.status!=="superseded");if(facts.length>8)throw new Error("Too many relevant facts");
@@ -57,11 +59,11 @@ export async function evaluateLive(ctx:Context,reply:string,support:boolean,tran
    choice(`relation:${f.id}`,`${guard} Does the new reply confirm, contradict, supplement, leave unclear, or have no relation to fact ${f.id} (${f.category}: ${f.field}=${f.value})?`,["supported","contradicted","new_information","unclear","unrelated"]),
    choice(`scope:${f.id}`,`${guard} What scope does the new reply establish concerning fact ${f.id}? Choose unknown when ambiguous.`,["company","team","contact","unknown"])
   ])];
-  const first=parseAnswers(await transport.decide({model:DECISION_MODEL,input,questions}),questions);result.judgments.push(...first.answers.values());result.usage!.decisionInputTokens+=first.tokens;
+  const first=parseAnswers(await bounded.decide({model:DECISION_MODEL,input,questions}),questions);result.judgments.push(...first.answers.values());result.usage!.decisionInputTokens+=first.tokens;
   if(first.answers.get("opt_out")!.choice===true)return {...result,optOut:true,outcome:"opt_out"};
   const changed=facts.filter(f=>["contradicted","new_information","unclear"].includes(String(first.answers.get(`relation:${f.id}`)!.choice)));
   if(!changed.length){result.outcome=first.answers.size>1&&facts.every(f=>first.answers.get(`relation:${f.id}`)!.choice==="unrelated")?"unrelated":"no_correction";return result;}
-  const generated=extraction(await transport.generate({model:process.env.TRACKER_GENERATION_MODEL||"gpt-6-luna",store:false,max_output_tokens:1800,instructions:`${guard} Extract only proposed field values, exact continuous excerpts copied from the reply, and concise source-based summaries for the specified fact IDs. Do not produce decision judgments or invented reasoning. Preserve ambiguous timing as text.`,input:JSON.stringify({reply,facts:changed,referenceDate,referenceTimezone}),text:{format:{type:"json_schema",name:"correction_extraction",strict:true,schema:extractedSchema}}}));result.usage!.generationInputTokens+=generated.tokens;
+  const generated=extraction(await bounded.generate({model:process.env.TRACKER_GENERATION_MODEL||"gpt-6-luna",store:false,max_output_tokens:1800,instructions:`${guard} Extract only proposed field values, exact continuous excerpts copied from the reply, and concise source-based summaries for the specified fact IDs. Do not produce decision judgments or invented reasoning. Preserve ambiguous timing as text.`,input:JSON.stringify({reply,facts:changed,referenceDate,referenceTimezone}),text:{format:{type:"json_schema",name:"correction_extraction",strict:true,schema:extractedSchema}}}));result.usage!.generationInputTokens+=generated.tokens;
   const parsed=object(JSON.parse(generated.text));if(!Array.isArray(parsed.corrections)||parsed.corrections.length!==changed.length)throw new Error("Incomplete extraction");
   const seen=new Set<string>();
   for(const entry of parsed.corrections){
@@ -80,11 +82,11 @@ export async function evaluateLive(ctx:Context,reply:string,support:boolean,tran
     choice(`repeats:${m.id}`,`${guard} Would message ${m.id} repeat an assumption corrected by this reply?`,[true,false]),
     choice(`supported:${m.id}`,`${guard} Is offering CRM lead-routing checks for the buyer-reported new CRM supported by seller capabilities AND relevant to the buyer's stated needs? A solved need, opt-out, unknown scope or unsupported CRM means false.`,[true,false])
    ]);
-   const second=parseAnswers(await transport.decide({model:DECISION_MODEL,input:impactInput,questions}),questions);result.judgments.push(...second.answers.values());result.usage!.decisionInputTokens+=second.tokens;
+   const second=parseAnswers(await bounded.decide({model:DECISION_MODEL,input:impactInput,questions}),questions);result.judgments.push(...second.answers.values());result.usage!.decisionInputTokens+=second.tokens;
    for(const m of candidates){const depends=second.answers.get(`depends:${m.id}`)!,repeats=second.answers.get(`repeats:${m.id}`)!,supported=second.answers.get(`supported:${m.id}`)!;result.impactOverrides!.push({messageId:m.id,depends:depends.choice===true||depends.confidence<.65,repeats:repeats.choice===true||repeats.confidence<.65,supported:supported.choice===true&&supported.confidence>=.65});}
    const eligible=candidates.filter(m=>support&&ctx.contact.suppressed!==true&&result.impactOverrides!.some(i=>i.messageId===m.id&&i.supported)&&result.corrections.some(c=>c.category==="technology"&&c.scope==="company"&&c.relation==="contradicted"&&c.replacementValue==="HubSpot"&&m.factIds.includes(c.factId)));
    if(options.generateDrafts&&eligible.length){
-    const output=extraction(await transport.generate({model:process.env.TRACKER_GENERATION_MODEL||"gpt-6-luna",store:false,max_output_tokens:1200,instructions:`${guard} Suggest concise revised outreach drafts only for the listed messages, based on the actual seller capabilities and correction. Acknowledge the buyer correction. Do not claim external actions were taken. No guaranteed outcomes. Drafts are suggestions and require approval.`,input:JSON.stringify({seller:JSON.parse(input).seller,corrections:result.corrections,reply,messages:eligible}),text:{format:{type:"json_schema",name:"suggested_drafts",strict:true,schema:draftSchema}}}));result.usage!.generationInputTokens+=output.tokens;
+    const output=extraction(await bounded.generate({model:process.env.TRACKER_GENERATION_MODEL||"gpt-6-luna",store:false,max_output_tokens:1200,instructions:`${guard} Suggest concise revised outreach drafts only for the listed messages, based on the actual seller capabilities and correction. Acknowledge the buyer correction. Do not claim external actions were taken. No guaranteed outcomes. Drafts are suggestions and require approval.`,input:JSON.stringify({seller:JSON.parse(input).seller,corrections:result.corrections,reply,messages:eligible}),text:{format:{type:"json_schema",name:"suggested_drafts",strict:true,schema:draftSchema}}}));result.usage!.generationInputTokens+=output.tokens;
     const root=object(JSON.parse(output.text));if(!Array.isArray(root.drafts))throw new Error("Missing suggested drafts");
     for(const raw of root.drafts){const d=object(raw);if(typeof d.messageId!=="string"||!eligible.some(m=>m.id===d.messageId)||typeof d.body!=="string"||!d.body.trim()||d.body.length>4000||result.draftSuggestions![d.messageId])throw new Error("Invalid suggested draft");result.draftSuggestions![d.messageId]=d.body;}
    }
