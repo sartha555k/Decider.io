@@ -63,7 +63,7 @@ export async function evaluate(db:DatabaseSync,id:string,reply:string,support:bo
   const current=readContext(db,id);
   const proposed=propose(current,assessment,support);
   if(current.contact.suppressed===true){proposed.actions=proposed.actions.filter(a=>a.type!=="rewrite");for(const impact of proposed.impacts)impact.rewriteEligible=false;}
-  const result:Review={id:randomUUID(),sellerId:ctx.seller.id,companyId:ctx.company.id,sourceReplyId:sourceId,scenarioId:id,reply,hubspotSupported:support,assessment,...proposed,inputFingerprint:fingerprint(current,reply,support),cacheKey:createHash("sha256").update(fingerprint(current,reply,support)+mode+modelKey).digest("hex"),state:"needs_review",createdAt:new Date().toISOString(),latencyMs:Math.round(performance.now()-start)};
+  const result:Review={id:randomUUID(),sellerId:ctx.seller.id,companyId:ctx.company.id,sourceReplyId:sourceId,scenarioId:id,reply,hubspotSupported:support,assessment,...proposed,inputFingerprint:fingerprint(current,reply,support),cacheKey:createHash("sha256").update(fingerprint(current,reply,support)+mode+modelKey).digest("hex"),state:assessment.failure?"failed":"needs_review",createdAt:new Date().toISOString(),latencyMs:Math.round(performance.now()-start)};
   insertEntity(db,"reviews",result);return result;
  });return review;
 }
