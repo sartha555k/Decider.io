@@ -43,7 +43,7 @@ export async function evaluate(db:DatabaseSync,id:string,reply:string,support:bo
  if(!ctx.messages.some(m=>m.id===sourceId)) transaction(db,()=>insertEntity(db,"messages",{id:sourceId,sellerId:ctx.seller.id,companyId:ctx.company.id,contactId:ctx.contact.id,conversationId:`conversation-${id}`,direction:"inbound",body:reply,timestamp:new Date().toISOString(),ingestionId:sourceId}));
  ctx=readContext(db,id);
  const key=createHash("sha256").update(fingerprint(ctx,reply,support)+mode+modelKey).digest("hex");
- const existing=listEntities(db,"reviews",ctx.seller.id,ctx.company.id).find(r=>r.cacheKey===key&&r.state!=="failed");
+ const existing=listEntities(db,"reviews",ctx.seller.id,ctx.company.id).find(r=>r.cacheKey===key&&["needs_review","approved"].includes(String(r.state)));
  if(existing)return existing as Review;
  let assessment:Assessment;
  if(mode==="live") {
@@ -146,6 +146,7 @@ export function revert(db:DatabaseSync,id:string,eventId:string):Audit {
    else db.prepare(`DELETE FROM ${change.table} WHERE seller_id=? AND company_id=? AND id=?`).run(ctx.seller.id,ctx.company.id,change.id);
    changes.push({...change,before:change.after,after:change.before});
   }
+  if(event.reviewId){const oldReview=get<Review>(db,"reviews",ctx,event.reviewId);write(db,"reviews",{...oldReview,state:"stale"});}
   return audit(db,ctx,"revert","New audited action reverting an unchanged internal approved repair.",changes,event.reviewId,event.evidenceIds,event.id);
  });
 }
