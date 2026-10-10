@@ -66,7 +66,7 @@ Browser tests run against the production build with an isolated temporary SQLite
 
 Tests cover correction categories, scoped changes, seller relevance, message dependencies, preserved sent history, opt-out priority, malicious replies, ambiguity/refusal/failure, exact quotes, duplicate ingestion/evaluation/approval, stale versions, workspace isolation, selective approvals, reversal, spending limits, desktop/mobile interaction, keyboard access, automated WCAG contrast/accessibility checks, and cross-origin mutation rejection. OpenAI tests use mocked transport; no live calls have been verified.
 
-CI runs these checks for PRs into `dev` and pushes to `dev`. Generated browser reports and local databases are ignored.
+CI runs these checks for PRs and pushes to `dev` and `main`. Generated browser reports and local databases are ignored.
 
 ## Review the code
 
@@ -85,7 +85,7 @@ The fixtures use an explicit reference date of **10 October 2026** and **Asia/Ca
 
 See the [founder demonstration script](docs/founder-demo.md), [validation record](docs/validation.md), and [desktop](docs/images/review-desktop.png)/[mobile](docs/images/review-mobile.png) screenshots.
 
-`dev` originates from `main`; each feature branch originates from the updated `dev`, and tested PRs merge into `dev`. The initial release was promoted to `main` through PR #8. Later fixes and deployment preparation remain on `dev`; the Render Blueprint deploys that branch manually. The implementation is split into foundation, correction engine, approval/audit, OpenAI integration, operator interface, and validation/documentation PRs.
+`dev` originates from `main`; each feature branch originates from the updated `dev`, and tested PRs merge into `dev`. Approved releases are promoted through a PR into `main`; the Render Blueprint deploys `main` manually. The implementation is split into foundation, correction engine, approval/audit, OpenAI integration, operator interface, and validation/documentation PRs.
 
 ## Low-cost API defaults
 
