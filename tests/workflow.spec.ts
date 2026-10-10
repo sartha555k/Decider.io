@@ -201,3 +201,128 @@ test("partial approval keeps the old follow-up flagged on later evaluation", asy
     .click();
   await expect(page.getByText("CRM: HubSpot", { exact: true })).toHaveCount(0);
 });
+
+test("follow-ups and quality navigation work before evaluation and survive reload", async ({
+  page,
+}) => {
+  await load(page);
+  await page
+    .getByRole("link", { name: "Local follow-ups", exact: true })
+    .click();
+  await expect(page).toHaveURL(/#followups$/);
+  await expect(page.locator("#followups .followup-card")).toHaveCount(3);
+  await expect(
+    page.getByRole("button", { name: "Evaluate reply" }),
+  ).toBeHidden();
+  await expect(
+    page.locator("#followups").getByText("Unaffected", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Local follow-ups", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.reload();
+  await expect(page.locator("#followups .followup-card")).toHaveCount(3);
+  await page
+    .getByRole("link", { name: "Data quality & usage", exact: true })
+    .click();
+  await expect(page.locator("#quality")).toBeVisible();
+  await expect(page.locator("#followups")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Research quality", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("#quality")
+      .getByText("No live token usage recorded.", { exact: false }),
+  ).toBeVisible();
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(results.violations).toEqual([]);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    ),
+  ).toBe(false);
+  await page.goBack();
+  await expect(page.locator("#followups")).toBeVisible();
+  await page
+    .getByRole("link", { name: "Review reply and choose repairs", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Evaluate reply" }),
+  ).toBeVisible();
+});
+
+test("hiring repair updates saved follow-ups and quality feedback persists", async ({
+  page,
+}) => {
+  await load(page, "hiring");
+  await page
+    .getByRole("link", { name: "Data quality & usage", exact: true })
+    .click();
+  // The scenario hasn't been evaluated yet on the first run; later runs retain its history.
+  await expect(
+    page.getByRole("heading", { name: "Research quality", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Reply review", exact: true }).click();
+  await evaluate(page);
+  await page.getByRole("button", { name: "Approve selected (2)" }).click();
+  await page
+    .getByRole("link", { name: "Local follow-ups", exact: true })
+    .click();
+  await expect(
+    page.locator("#followups").getByText("Paused", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator("#followups").getByText("Sent · History", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("link", { name: "Data quality & usage", exact: true })
+    .click();
+  const metric = (label: string) =>
+    page
+      .locator("#quality .metrics > div")
+      .filter({ has: page.getByText(label, { exact: true }) })
+      .locator("strong");
+  await expect(metric("Buyer-reported facts")).toHaveText("1");
+  await expect(metric("Superseded facts preserved")).toHaveText("1");
+  await expect(
+    page.getByText(
+      "0 pending follow-ups still reference superseded research.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  const misses = Number(await metric("Reported misses").innerText());
+  const selectedReview = await page
+    .getByLabel("Evaluation to assess")
+    .inputValue();
+  await page
+    .getByRole("button", { name: "Report a missed correction", exact: true })
+    .click();
+  await expect(metric("Reported misses")).toHaveText(String(misses + 1));
+  const saved = await page.request.get("/api/workspace?scenario=hiring");
+  const body = await saved.json();
+  expect(
+    body.audit.some(
+      (event: { action: string; reviewId: string }) =>
+        event.action === "missed_correction" &&
+        event.reviewId === selectedReview,
+    ),
+  ).toBe(true);
+  await page
+    .getByRole("button", { name: "Open selected evaluation", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Correction detected", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Revert this internal repair" })
+    .click();
+  await page
+    .getByRole("link", { name: "Local follow-ups", exact: true })
+    .click();
+  await expect(
+    page.locator("#followups").getByText("Queued", { exact: true }),
+  ).toHaveCount(2);
+});

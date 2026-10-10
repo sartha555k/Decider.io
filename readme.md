@@ -28,11 +28,17 @@ Select one of twelve clearly fictional scenarios. Edit the prospect reply and se
 
 Approve actions individually, edit proposed values or suggested drafts, or reject the proposal. Research changes preserve old facts and original evidence. Revised drafts remain paused. Changing inputs disables approval until reevaluation. Server-side version checks prevent stale repairs, and repeated approvals are safe.
 
+Use **Local follow-ups** in the desktop sidebar or mobile navigation to inspect saved messages before evaluating. Their status is shown as queued, draft, paused, cancelled, or sent; an unevaluated message is not labelled unaffected. Return to **Reply review** to evaluate and approve repairs.
+
+**Data quality & usage** shows current facts, buyer-reported facts, preserved superseded facts, missing evidence, and pending follow-ups still referencing superseded research for the selected scenario. Select an evaluation to report a missed correction or an incorrect flag, or open it for review. Feedback is saved in the local audit history. Section links support reload and browser back/forward navigation.
+
 An explicit opt-out immediately suppresses the replying contact and cancels their pending local outreach. It never generates a new pitch. Approved internal repairs can be reverted through a new audited action only while their records remain unchanged. Reversal preserves buyer evidence and increments record versions. Future external integrations may have different reversal limits.
 
 This is a **single-operator local demonstration**, not an authenticated multi-user SaaS deployment. All sample data is fictional. No real email sending, meeting booking, external CRM update, or invented Rhycon connector is included.
 
 ## OpenAI integration
+
+You do not need to build another API service or obtain a separate Decisions API key. The existing server uses an OpenAI API project key for both Decisions and Responses calls, subject to your account's model access. A ChatGPT subscription or this chat session does not configure the app's API credentials or billing. Store credentials only in a server-side environment file such as `.env.local`, configure the reviewed generation prices listed in `.env.example`, restart the app, and explicitly evaluate in Live mode. Never commit the key.
 
 Practice mode works without credentials. Live mode uses server-side OpenAI’s dedicated Decisions API (`gpt-6-luna`, SDK 7.32.0) for correction and impact judgments. Separate Responses API calls with strict Structured Outputs extract values/quotes/summaries and optionally propose drafts. Quotes must match source text. Raw upstream errors and credentials are not returned to the browser.
 
