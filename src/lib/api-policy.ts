@@ -1,5 +1,5 @@
-// Standard text pricing reviewed against the official model guides on 10 October 2026.
-// Provider account/model access is checked separately; these are local spending controls.
-export const DEFAULT_GENERATION_MODEL = "gpt-5-nano";
-export const DEFAULT_GENERATION_INPUT_PRICE = 0.05;
-export const DEFAULT_GENERATION_OUTPUT_PRICE = 0.4;
+// Decisions API model and standard input pricing documented on 10 October 2026.
+export const DECISION_MODEL = "gpt-6-luna";
+export const DEFAULT_DECISION_INPUT_PRICE = 0.1;
+export const MAX_DECISION_CALLS = 2;
+export const MAX_REQUEST_BYTES = 64000;

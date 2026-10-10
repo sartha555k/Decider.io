@@ -1,9 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { transaction } from "./database";
 import {
-  DEFAULT_GENERATION_MODEL,
-  DEFAULT_GENERATION_INPUT_PRICE,
-  DEFAULT_GENERATION_OUTPUT_PRICE,
+  DEFAULT_DECISION_INPUT_PRICE,
+  MAX_DECISION_CALLS,
+  MAX_REQUEST_BYTES,
 } from "./api-policy";
 function setting(name: string, fallback: number) {
   const value = process.env[name];
@@ -14,21 +14,11 @@ function setting(name: string, fallback: number) {
   return parsed;
 }
 export function priceConfiguration() {
-  const usesDefaultModel =
-    (process.env.TRACKER_GENERATION_MODEL || DEFAULT_GENERATION_MODEL) ===
-    DEFAULT_GENERATION_MODEL;
   return {
-    decisionInput: setting("TRACKER_DECISION_INPUT_USD_PER_MILLION", 0.1),
-    generationInput: process.env.TRACKER_GENERATION_INPUT_USD_PER_MILLION
-      ? setting("TRACKER_GENERATION_INPUT_USD_PER_MILLION", 0)
-      : usesDefaultModel
-        ? DEFAULT_GENERATION_INPUT_PRICE
-        : null,
-    generationOutput: process.env.TRACKER_GENERATION_OUTPUT_USD_PER_MILLION
-      ? setting("TRACKER_GENERATION_OUTPUT_USD_PER_MILLION", 0)
-      : usesDefaultModel
-        ? DEFAULT_GENERATION_OUTPUT_PRICE
-        : null,
+    decisionInput: setting(
+      "TRACKER_DECISION_INPUT_USD_PER_MILLION",
+      DEFAULT_DECISION_INPUT_PRICE,
+    ),
     dailyBudget: setting("TRACKER_DAILY_BUDGET_USD", 0.05),
     monthlyBudget: setting("TRACKER_MONTHLY_BUDGET_USD", 1),
     dailyEvaluations: Math.min(
@@ -39,16 +29,9 @@ export function priceConfiguration() {
 }
 export function reserveLiveEvaluation(db: DatabaseSync) {
   const config = priceConfiguration();
-  if (config.generationInput === null || config.generationOutput === null)
-    throw new Error(
-      "Configure reviewed Responses input/output pricing before enabling live evaluations, so the spending guard can reserve a bounded cost.",
-    );
-  // Conservative byte-based input bound for at most two calls to each service.
+  // Token count is conservatively bounded by UTF-8 request bytes.
   const reserve =
-    (128000 * config.decisionInput +
-      128000 * config.generationInput +
-      3600 * config.generationOutput) /
-    1000000;
+    (MAX_DECISION_CALLS * MAX_REQUEST_BYTES * config.decisionInput) / 1000000;
   db.exec(
     "CREATE TABLE IF NOT EXISTS live_reservations(id INTEGER PRIMARY KEY, day TEXT NOT NULL, reserved_usd REAL NOT NULL)",
   );

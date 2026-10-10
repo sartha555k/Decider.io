@@ -13,8 +13,6 @@ interface Workspace {
   connection: { configured: boolean; model: string; status: string };
   pricing: {
     decisionInput: number;
-    generationInput: number | null;
-    generationOutput: number | null;
     dailyBudget: number;
     monthlyBudget: number;
     dailyEvaluations: number;
@@ -173,7 +171,6 @@ export default function Tracker() {
     [reply, setReply] = useState(""),
     [support, setSupport] = useState(true),
     [mode, setMode] = useState<"practice" | "live">("practice"),
-    [drafts, setDrafts] = useState(false),
     [review, setReview] = useState<Review | null>(null),
     [selected, setSelected] = useState<string[]>([]),
     [edits, setEdits] = useState<Record<string, string>>({}),
@@ -188,7 +185,6 @@ export default function Tracker() {
     reply,
     support,
     mode,
-    drafts,
   });
   const stale = Boolean(review && signature !== evaluatedInputs);
   const canApprove = Boolean(
@@ -257,7 +253,6 @@ export default function Tracker() {
           reply,
           hubspotSupported: support,
           mode,
-          generateDrafts: drafts,
           ...extra,
         }),
       });
@@ -338,7 +333,6 @@ export default function Tracker() {
         reply: item.reply,
         support: item.hubspotSupported,
         mode: item.assessment.mode,
-        drafts,
       }),
     );
     setTimeout(() => {
@@ -364,18 +358,17 @@ export default function Tracker() {
               message.claims.some((claim) => claim.factIds.includes(f.id))),
         ),
     ) || [];
-  const generationOutputTokens = reviews.reduce(
-    (sum, r) => sum + (r.assessment.usage?.generationOutputTokens || 0),
+  const tokens = reviews.reduce(
+    (total, r) => total + (r.assessment.usage?.decisionInputTokens || 0),
     0,
   );
-  const tokens = reviews.reduce(
-      (total, r) => total + (r.assessment.usage?.decisionInputTokens || 0),
-      0,
-    ),
-    generationTokens = reviews.reduce(
-      (total, r) => total + (r.assessment.usage?.generationInputTokens || 0),
-      0,
-    );
+  const historicalGenerationTokens = reviews.reduce(
+    (total, r) =>
+      total +
+      (r.assessment.usage?.generationInputTokens || 0) +
+      (r.assessment.usage?.generationOutputTokens || 0),
+    0,
+  );
   return (
     <div className="app-shell">
       <a href="#workspace" className="skip-link">
@@ -648,15 +641,11 @@ export default function Tracker() {
                       : data?.connection.status}
                   </p>
                   {mode === "live" && (
-                    <label className="draft-option">
-                      <input
-                        type="checkbox"
-                        checked={drafts}
-                        onChange={(e) => setDrafts(e.target.checked)}
-                        disabled={busy}
-                      />{" "}
-                      Generate optional draft suggestions (additional API usage)
-                    </label>
+                    <p className="muted">
+                      Decisions only · GPT-6 Luna. Corrected values use exact
+                      buyer statements for your review. No generated email
+                      drafts.
+                    </p>
                   )}
                 </section>
               </div>
@@ -1259,16 +1248,12 @@ export default function Tracker() {
                 )}
                 <h3>API usage</h3>
                 <p>
-                  Returned input tokens: Decisions {tokens.toLocaleString()} ·
-                  Generation {generationTokens.toLocaleString()}.{" "}
+                  Returned Decisions input tokens: {tokens.toLocaleString()}.{" "}
                   {tokens > 0
                     ? `Estimated standard decision input cost: $${((tokens * (data?.pricing.decisionInput || 0)) / 1000000).toFixed(6)}.`
-                    : "No live token usage recorded."}{" "}
-                  {data?.pricing.generationInput !== null &&
-                  data?.pricing.generationOutput !== null &&
-                  generationTokens > 0
-                    ? `Estimated generation cost: $${((generationTokens * (data?.pricing.generationInput || 0) + generationOutputTokens * (data?.pricing.generationOutput || 0)) / 1000000).toFixed(6)} (input and output).`
-                    : "Generation cost unavailable until reviewed pricing and live usage are recorded."}
+                    : "No live token usage recorded."}
+                  {historicalGenerationTokens > 0 &&
+                    ` Older stored reviews contain ${historicalGenerationTokens.toLocaleString()} generation tokens. New evaluations use Decisions only.`}
                 </p>
                 <details>
                   <summary>Live usage limits</summary>
@@ -1276,11 +1261,10 @@ export default function Tracker() {
                     At most {data?.pricing.dailyEvaluations} uncached
                     evaluations per UTC day. Budget reservation limit: $
                     {data?.pricing.dailyBudget} per day and $
-                    {data?.pricing.monthlyBudget} per UTC calendar month.
-                    Standard generation prices are supplied for the default
-                    GPT-5 nano model. Other models require reviewed input/output
-                    prices. These app limits do not limit other uses of your API
-                    key.
+                    {data?.pricing.monthlyBudget} per UTC calendar month. At
+                    most two Decisions API requests per evaluation. No Responses
+                    calls or generation pricing settings are needed. These app
+                    limits do not limit other uses of your API key.
                   </p>
                 </details>
                 <p className="muted">

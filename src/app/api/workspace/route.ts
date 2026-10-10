@@ -1,4 +1,3 @@
-import { DEFAULT_GENERATION_MODEL } from "../../../lib/api-policy";
 import { NextResponse } from "next/server";
 import { openDatabase, listEntities } from "../../../lib/database";
 import {
@@ -112,15 +111,9 @@ export async function POST(request: Request) {
           "live",
           (ctx, reply, support) => {
             reserveLiveEvaluation(db);
-            return evaluateLive(ctx, reply, support, transport, {
-              generateDrafts: input.generateDrafts === true,
-            });
+            return evaluateLive(ctx, reply, support, transport);
           },
-          integrationRevision +
-            String(input.generateDrafts) +
-            String(
-              process.env.TRACKER_GENERATION_MODEL || DEFAULT_GENERATION_MODEL,
-            ),
+          integrationRevision,
         );
       } else
         review = await evaluate(

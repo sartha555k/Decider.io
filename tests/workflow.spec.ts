@@ -126,6 +126,12 @@ test("live mode makes no call on selection and reports missing configuration", a
     page.getByText("Live mode not configured", { exact: true }),
   ).toBeVisible();
   expect(posts).toBe(0);
+  await expect(
+    page.getByText("Decisions only · GPT-6 Luna.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Generate optional draft suggestions", { exact: false }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Evaluate reply" }).click();
   await expect(page.locator("main").getByRole("alert")).toContainText(
     "Live mode is not configured",
