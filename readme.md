@@ -38,7 +38,7 @@ This is a **single-operator local demonstration**, not an authenticated multi-us
 
 ## OpenAI integration
 
-You do not need to build another API service or obtain a separate Decisions API key. The existing server uses an OpenAI API project key for both Decisions and Responses calls, subject to your account's model access. A ChatGPT subscription or this chat session does not configure the app's API credentials or billing. Store credentials only in a server-side environment file such as `.env.local`, configure the reviewed generation prices listed in `.env.example`, restart the app, and explicitly evaluate in Live mode. Never commit the key.
+You do not need to build another API service or obtain a separate Decisions API key. The existing server uses an OpenAI API project key for both Decisions and Responses calls, subject to your account's model access. A ChatGPT subscription or this chat session does not configure the app's API credentials or billing. Store credentials only in a server-side environment file such as `.env.local`, review the generation prices and spending limits listed in `.env.example`, restart the app, and explicitly evaluate in Live mode. Never commit the key.
 
 Practice mode works without credentials. Live mode uses server-side OpenAI’s dedicated Decisions API (`gpt-6-luna`, SDK 7.32.0) for correction and impact judgments. Separate Responses API calls with strict Structured Outputs extract values/quotes/summaries and optionally propose drafts. Quotes must match source text. Raw upstream errors and credentials are not returned to the browser.
 
@@ -80,3 +80,7 @@ The fixtures use an explicit reference date of **10 October 2026** and **Asia/Ca
 See the [founder demonstration script](docs/founder-demo.md), [validation record](docs/validation.md), and [desktop](docs/images/review-desktop.png)/[mobile](docs/images/review-mobile.png) screenshots.
 
 `main` is untouched. `dev` originates from `main`; each feature branch originates from the updated `dev`, and tested PRs merge into `dev`. The implementation is split into foundation, correction engine, approval/audit, OpenAI integration, operator interface, and validation/documentation PRs.
+
+## Low-cost API defaults
+
+Practice mode makes no API calls. Live judgments use the documented Decisions model `gpt-6-luna`; extraction and optional drafts default to the cheaper `gpt-5-nano` with minimal reasoning. Standard GPT-5 nano input/output prices are supplied for the spending guard; other generation models require explicit reviewed prices. Live defaults allow at most two uncached evaluations per UTC day, $0.05 in daily reserved cost, and $1 in monthly reserved cost. Reservations persist in SQLite. Optional drafts stay off initially, and cached evaluations do not make another request. These are app-level estimates, not a guarantee against charges on the API account. Set `TRACKER_DAILY_BUDGET_USD=0` for zero new live spending.

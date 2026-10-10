@@ -1,3 +1,4 @@
+import { DEFAULT_GENERATION_MODEL } from "../../../lib/api-policy";
 import { NextResponse } from "next/server";
 import { openDatabase, listEntities } from "../../../lib/database";
 import {
@@ -117,7 +118,9 @@ export async function POST(request: Request) {
           },
           integrationRevision +
             String(input.generateDrafts) +
-            String(process.env.TRACKER_GENERATION_MODEL || "gpt-6-luna"),
+            String(
+              process.env.TRACKER_GENERATION_MODEL || DEFAULT_GENERATION_MODEL,
+            ),
         );
       } else
         review = await evaluate(

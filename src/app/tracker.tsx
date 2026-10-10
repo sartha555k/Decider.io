@@ -16,6 +16,7 @@ interface Workspace {
     generationInput: number | null;
     generationOutput: number | null;
     dailyBudget: number;
+    monthlyBudget: number;
     dailyEvaluations: number;
   };
   review?: Review;
@@ -1274,9 +1275,12 @@ export default function Tracker() {
                   <p>
                     At most {data?.pricing.dailyEvaluations} uncached
                     evaluations per UTC day. Budget reservation limit: $
-                    {data?.pricing.dailyBudget}. Verified generation input and
-                    output prices must be configured before live evaluations can
-                    reserve spending.
+                    {data?.pricing.dailyBudget} per day and $
+                    {data?.pricing.monthlyBudget} per UTC calendar month.
+                    Standard generation prices are supplied for the default
+                    GPT-5 nano model. Other models require reviewed input/output
+                    prices. These app limits do not limit other uses of your API
+                    key.
                   </p>
                 </details>
                 <p className="muted">
