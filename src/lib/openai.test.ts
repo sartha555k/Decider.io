@@ -74,6 +74,13 @@ describe("actual Decisions protocol with mocked transport", () => {
     expect(result.corrections[0].replacementValue).toBe("HubSpot");
     expect(transport.decide).toHaveBeenCalledTimes(2);
     expect(transport.generate).toHaveBeenCalledTimes(1);
+    expect(transport.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "gpt-5-nano",
+        reasoning: { effort: "minimal" },
+        store: false,
+      }),
+    );
     expect(result.usage?.decisionInputTokens).toBe(240);
     expect(result.usage?.generationInputTokens).toBe(90);
     expect(result.usage?.generationOutputTokens).toBe(20);

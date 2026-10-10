@@ -1,5 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { transaction } from "./database";
+import {
+  DEFAULT_GENERATION_MODEL,
+  DEFAULT_GENERATION_INPUT_PRICE,
+  DEFAULT_GENERATION_OUTPUT_PRICE,
+} from "./api-policy";
 function setting(name: string, fallback: number) {
   const value = process.env[name];
   if (!value) return fallback;
@@ -9,18 +14,26 @@ function setting(name: string, fallback: number) {
   return parsed;
 }
 export function priceConfiguration() {
+  const usesDefaultModel =
+    (process.env.TRACKER_GENERATION_MODEL || DEFAULT_GENERATION_MODEL) ===
+    DEFAULT_GENERATION_MODEL;
   return {
     decisionInput: setting("TRACKER_DECISION_INPUT_USD_PER_MILLION", 0.1),
     generationInput: process.env.TRACKER_GENERATION_INPUT_USD_PER_MILLION
       ? setting("TRACKER_GENERATION_INPUT_USD_PER_MILLION", 0)
-      : null,
+      : usesDefaultModel
+        ? DEFAULT_GENERATION_INPUT_PRICE
+        : null,
     generationOutput: process.env.TRACKER_GENERATION_OUTPUT_USD_PER_MILLION
       ? setting("TRACKER_GENERATION_OUTPUT_USD_PER_MILLION", 0)
-      : null,
-    dailyBudget: setting("TRACKER_DAILY_BUDGET_USD", 1),
+      : usesDefaultModel
+        ? DEFAULT_GENERATION_OUTPUT_PRICE
+        : null,
+    dailyBudget: setting("TRACKER_DAILY_BUDGET_USD", 0.05),
+    monthlyBudget: setting("TRACKER_MONTHLY_BUDGET_USD", 1),
     dailyEvaluations: Math.min(
       100,
-      Math.floor(setting("TRACKER_DAILY_LIVE_EVALUATIONS", 20)),
+      Math.floor(setting("TRACKER_DAILY_LIVE_EVALUATIONS", 2)),
     ),
   };
 }
@@ -46,6 +59,15 @@ export function reserveLiveEvaluation(db: DatabaseSync) {
         "SELECT COUNT(*) AS count,COALESCE(SUM(reserved_usd),0) AS cost FROM live_reservations WHERE day=?",
       )
       .get(day)!;
+    const monthly = db
+      .prepare(
+        "SELECT COALESCE(SUM(reserved_usd),0) AS cost FROM live_reservations WHERE substr(day,1,7)=?",
+      )
+      .get(day.slice(0, 7))!;
+    if (Number(monthly.cost) + reserve > config.monthlyBudget)
+      throw new Error(
+        "The configured monthly live spending limit has been reached. No API call was made.",
+      );
     if (
       Number(totals.count) >= config.dailyEvaluations ||
       Number(totals.cost) + reserve > config.dailyBudget

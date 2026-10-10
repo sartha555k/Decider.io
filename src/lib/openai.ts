@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { DEFAULT_GENERATION_MODEL } from "./api-policy";
 import type { DecisionCreateParams } from "openai/resources/decisions";
 import type { ResponseCreateParamsNonStreaming } from "openai/resources/responses/responses";
 import type { Assessment, Context, Correction, Scope } from "./domain";
@@ -6,7 +7,7 @@ import { validateQuote } from "./engine";
 import { referenceDate, referenceTimezone } from "./fixtures";
 
 export const DECISION_MODEL = "gpt-6-luna";
-export const integrationRevision = "decisions-v1-sdk7.32-2026-10-10";
+export const integrationRevision = "decisions-v2-budget-nano-2026-10-10";
 export interface Transport {
   decide(request: DecisionCreateParams): Promise<unknown>;
   generate(request: ResponseCreateParamsNonStreaming): Promise<unknown>;
@@ -312,7 +313,11 @@ export async function evaluateLive(
     }
     const generated = extraction(
       await bounded.generate({
-        model: process.env.TRACKER_GENERATION_MODEL || "gpt-6-luna",
+        model: process.env.TRACKER_GENERATION_MODEL || DEFAULT_GENERATION_MODEL,
+        ...(process.env.TRACKER_GENERATION_MODEL === undefined ||
+        process.env.TRACKER_GENERATION_MODEL === DEFAULT_GENERATION_MODEL
+          ? { reasoning: { effort: "minimal" as const } }
+          : {}),
         store: false,
         max_output_tokens: 1800,
         instructions: `${guard} Extract only proposed field values, exact continuous excerpts copied from the reply, and concise source-based summaries for the specified fact IDs. Do not produce decision judgments or invented reasoning. Preserve ambiguous timing as text.`,
@@ -469,7 +474,12 @@ export async function evaluateLive(
       if (options.generateDrafts && eligible.length) {
         const output = extraction(
           await bounded.generate({
-            model: process.env.TRACKER_GENERATION_MODEL || "gpt-6-luna",
+            model:
+              process.env.TRACKER_GENERATION_MODEL || DEFAULT_GENERATION_MODEL,
+            ...(process.env.TRACKER_GENERATION_MODEL === undefined ||
+            process.env.TRACKER_GENERATION_MODEL === DEFAULT_GENERATION_MODEL
+              ? { reasoning: { effort: "minimal" as const } }
+              : {}),
             store: false,
             max_output_tokens: 1200,
             instructions: `${guard} Suggest concise revised outreach drafts only for the listed messages, based on the actual seller capabilities and correction. Acknowledge the buyer correction. Do not claim external actions were taken. No guaranteed outcomes. Drafts are suggestions and require approval.`,
