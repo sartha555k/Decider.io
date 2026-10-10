@@ -332,3 +332,73 @@ test("hiring repair updates saved follow-ups and quality feedback persists", asy
     page.locator("#followups").getByText("Queued", { exact: true }),
   ).toHaveCount(2);
 });
+
+test("a Live confirmation explains current HubSpot research and cached evaluations", async ({
+  page,
+}) => {
+  await load(page);
+  const response = await page.request.get("/api/workspace?scenario=crm");
+  const workspace = await response.json();
+  // Return a controlled server result to verify the Live UI without any provider calls.
+  const mockReview = {
+    id: "mock-confirmed-review",
+    reply: workspace.scenario.reply,
+    hubspotSupported: true,
+    scenarioId: "crm",
+    state: "needs_review",
+    actions: [],
+    impacts: [],
+    latencyMs: 10,
+    comparedFacts: [
+      {
+        id: "mock-hubspot",
+        field: "CRM",
+        value: "HubSpot",
+        scope: "company",
+        version: 1,
+      },
+    ],
+    cacheHit: true,
+    assessment: {
+      mode: "live",
+      model: "gpt-6-luna",
+      outcome: "no_correction",
+      corrections: [],
+      optOut: false,
+      warnings: [],
+      judgments: [],
+      usage: { decisionInputTokens: 10, generationInputTokens: 0 },
+    },
+  };
+  await page.route("**/api/workspace", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await route.fulfill({
+      json: { ...workspace, review: mockReview, reviews: [mockReview] },
+    });
+  });
+  await page.getByRole("button", { name: "Live", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Evaluate reply", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "No new correction to saved research",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".comparison-explanation")
+      .getByText("CRM: HubSpot", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Saved evaluation reused", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Ready to acknowledge", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("link", { name: "Inspect earlier repairs", exact: true })
+    .click();
+  await expect(page.locator("#history")).toBeVisible();
+});

@@ -18,8 +18,8 @@ Final local results on 10 October 2026 (Asia/Calcutta):
 
 | Check                          | Result                                            |
 | ------------------------------ | ------------------------------------------------- |
-| Unit/integration tests         | 55 passed, 0 failed                               |
-| Browser tests                  | 20 passed, 0 failed (desktop and mobile Chromium) |
+| Unit/integration tests         | 58 passed, 0 failed                               |
+| Browser tests                  | 22 passed, 0 failed (desktop and mobile Chromium) |
 | Production build               | Passed                                            |
 | TypeScript                     | Passed                                            |
 | Prettier / patch whitespace    | Passed                                            |

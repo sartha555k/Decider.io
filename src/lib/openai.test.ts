@@ -193,6 +193,84 @@ describe("Decisions-only protocol with mocked transport", () => {
       db.close();
     }
   });
+  it("compares against the already approved HubSpot fact and reuses a saved no-change result", async () => {
+    const db = openDatabase(":memory:");
+    try {
+      const reply = scenarios[0].reply;
+      const original = await evaluate(db, "crm", reply, true);
+      approve(db, {
+        reviewId: original.id,
+        scenarioId: "crm",
+        reply,
+        hubspotSupported: true,
+        actionIds: original.actions.map((a) => a.id),
+      });
+      const client: Transport = {
+        decide: vi.fn(async (request: DecisionCreateParams) =>
+          answer(
+            request,
+            Object.fromEntries(
+              request.questions.flatMap((q) =>
+                q.name?.startsWith("relation:")
+                  ? [[q.name, "supported"]]
+                  : q.name?.startsWith("evidence:")
+                    ? [[q.name, "none"]]
+                    : [],
+              ),
+            ),
+          ),
+        ),
+      };
+      const evaluator = (
+        context: ReturnType<typeof ctx>,
+        text: string,
+        support: boolean,
+      ) => evaluateLive(context, text, support, client);
+      const review = await evaluate(
+        db,
+        "crm",
+        reply,
+        true,
+        "live",
+        evaluator,
+        "confirmed-current-fact",
+      );
+      expect(review.assessment.outcome).toBe("no_correction");
+      expect(review.comparedFacts?.map((f) => f.value)).toEqual(["HubSpot"]);
+      expect(review.actions).toEqual([]);
+      expect(review.cacheHit).toBe(false);
+      const cached = await evaluate(
+        db,
+        "crm",
+        reply,
+        true,
+        "live",
+        evaluator,
+        "confirmed-current-fact",
+      );
+      expect(cached.id).toBe(review.id);
+      expect(cached.cacheHit).toBe(true);
+      expect(client.decide).toHaveBeenCalledTimes(1);
+      // The snapshot remains the fact used for the judgment, not the older Salesforce source.
+      expect(cached.comparedFacts?.[0].value).toBe("HubSpot");
+    } finally {
+      db.close();
+    }
+  });
+  it.each(["supported", "unrelated"])(
+    "routes low-confidence %s judgments to review instead of declaring no correction",
+    async (relation) => {
+      const result = await evaluateLive(
+        ctx(),
+        scenarios[0].reply,
+        true,
+        transport({ "relation:crm-fact-0": relation }, 0.5),
+      );
+      expect(result.outcome).toBe("ambiguous");
+      expect(result.corrections[0].replacementValue).toBeNull();
+      expect(result.corrections[0].relation).toBe("unclear");
+    },
+  );
   it("never leaks upstream error text or uses practice fallback", async () => {
     const result = await evaluateLive(ctx(), scenarios[0].reply, true, {
       decide: async () => {
