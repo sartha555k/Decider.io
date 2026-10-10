@@ -21,13 +21,17 @@ afterEach(() => {
   }
 });
 describe("live spending guard", () => {
-  it("requires generation pricing before any reservation", () => {
-    process.env.TRACKER_GENERATION_MODEL = "other-model";
-    delete process.env.TRACKER_GENERATION_INPUT_USD_PER_MILLION;
-    delete process.env.TRACKER_GENERATION_OUTPUT_USD_PER_MILLION;
+  it("requires only Decisions pricing and ignores obsolete generation configuration", () => {
+    process.env.TRACKER_GENERATION_MODEL = "unsupported-model";
+    process.env.TRACKER_GENERATION_INPUT_USD_PER_MILLION = "invalid";
+    process.env.TRACKER_GENERATION_OUTPUT_USD_PER_MILLION = "invalid";
     const db = openDatabase(":memory:");
     try {
-      expect(() => reserveLiveEvaluation(db)).toThrow("pricing");
+      reserveLiveEvaluation(db);
+      expect(
+        db.prepare("SELECT reserved_usd FROM live_reservations").get()
+          ?.reserved_usd,
+      ).toBeCloseTo(0.0128);
     } finally {
       db.close();
     }
@@ -59,10 +63,9 @@ describe("live spending guard", () => {
       db.close();
     }
   });
-  it("uses cheap reviewed pricing and conservative defaults for GPT-5 nano", () => {
+  it("uses Decisions-only pricing and conservative defaults", () => {
     expect(priceConfiguration()).toMatchObject({
-      generationInput: 0.05,
-      generationOutput: 0.4,
+      decisionInput: 0.1,
       dailyBudget: 0.05,
       monthlyBudget: 1,
       dailyEvaluations: 2,
@@ -88,7 +91,7 @@ describe("live spending guard", () => {
   it("counts reservations across the current month but excludes prior months", () => {
     process.env.TRACKER_DAILY_BUDGET_USD = "10";
     process.env.TRACKER_DAILY_LIVE_EVALUATIONS = "100";
-    process.env.TRACKER_MONTHLY_BUDGET_USD = "0.03";
+    process.env.TRACKER_MONTHLY_BUDGET_USD = "0.02";
     const db = openDatabase(":memory:");
     try {
       db.exec(

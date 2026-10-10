@@ -18,19 +18,19 @@ Final local results on 10 October 2026 (Asia/Calcutta):
 
 | Check                          | Result                                            |
 | ------------------------------ | ------------------------------------------------- |
-| Unit/integration tests         | 45 passed, 0 failed                               |
-| Browser tests                  | 16 passed, 0 failed (desktop and mobile Chromium) |
+| Unit/integration tests         | 55 passed, 0 failed                               |
+| Browser tests                  | 20 passed, 0 failed (desktop and mobile Chromium) |
 | Production build               | Passed                                            |
 | TypeScript                     | Passed                                            |
 | Prettier / patch whitespace    | Passed                                            |
 | HTTP repair-and-reversal smoke | Passed                                            |
-| Live OpenAI calls              | Not run; credentials intentionally deferred       |
+| Live OpenAI calls              | Not run; account/model access unverified          |
 
 Unit/integration calls are mocked or simulated. Browser tests isolate their database and explicitly omit API credentials.
 
 ## Limits and remaining verification
 
-Live OpenAI behavior remains unverified until server credentials, account/model access, and reviewed generation pricing are configured. The official Decisions guide and SDK protocol were verified; this does not establish account authorization.
+Live OpenAI behavior remains unverified until server credentials, account/model access, and reviewed Decisions pricing are configured. The official Decisions guide and SDK protocol were verified; this does not establish account authorization.
 
 This is a local single-operator demonstration without authentication, real mail delivery, meeting booking, external record updates, or a Rhycon connector. A public hosted deployment is not provisioned by these commands; use the prepared server or run the documented preview commands in the selected environment.
 
