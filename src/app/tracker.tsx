@@ -59,7 +59,114 @@ function date(value: unknown) {
       })
     : "Date unknown";
 }
+type View = "workspace" | "followups" | "history" | "quality";
+const views: { id: View; label: string; icon: string }[] = [
+  { id: "workspace", label: "Reply review", icon: "◫" },
+  { id: "followups", label: "Local follow-ups", icon: "↗" },
+  { id: "history", label: "Review history", icon: "◷" },
+  { id: "quality", label: "Data quality & usage", icon: "▥" },
+];
+function WorkspaceNav({
+  view,
+  navigate,
+  mobile = false,
+}: {
+  view: View;
+  navigate: (view: View) => void;
+  mobile?: boolean;
+}) {
+  return (
+    <nav
+      aria-label={
+        mobile ? "Mobile workspace navigation" : "Workspace navigation"
+      }
+      className={mobile ? "mobile-navigation" : undefined}
+    >
+      {views.map((item) => (
+        <a
+          key={item.id}
+          href={`#${item.id}`}
+          onClick={() => navigate(item.id)}
+          className={view === item.id ? "nav-active" : undefined}
+          aria-current={view === item.id ? "page" : undefined}
+        >
+          <span aria-hidden="true">{item.icon}</span>
+          {item.label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+function FollowupList({
+  context,
+  review,
+  stale,
+}: {
+  context: Context;
+  review: Review | null;
+  stale: boolean;
+}) {
+  return (
+    <div className="followup-list">
+      {context.outreach.map((message) => {
+        const impact =
+            !stale && !review?.assessment.failure
+              ? review?.impacts.find((i) => i.messageId === message.id)
+              : undefined,
+          sent = message.status === "sent",
+          affected = impact?.affected;
+        return (
+          <article
+            className={`followup-card ${affected ? "affected" : ""}`}
+            key={message.id}
+          >
+            <div className="followup-heading">
+              <h3>
+                {sent
+                  ? "Already sent"
+                  : message.factIds.length
+                    ? "Fact-dependent follow-up"
+                    : "General introduction"}
+              </h3>
+              <Tag tone={sent ? "neutral" : affected ? "amber" : "green"}>
+                {sent
+                  ? "Sent · History"
+                  : message.status === "cancelled"
+                    ? "Cancelled"
+                    : message.status === "paused"
+                      ? "Paused"
+                      : affected
+                        ? "Needs review"
+                        : impact
+                          ? "Unaffected"
+                          : message.status === "queued"
+                            ? "Queued"
+                            : "Draft"}
+              </Tag>
+            </div>
+            <p>{message.body}</p>
+            <div className="followup-meta">
+              <span>
+                {sent
+                  ? "Kept in history. Sent email cannot be recalled here."
+                  : impact?.reason ||
+                    (!stale && review && !review.assessment.failure
+                      ? "No repair proposed for this message."
+                      : "Evaluate the prospect reply to check whether this follow-up needs repair.")}
+              </span>
+              {impact?.discovery === "inferred" && (
+                <Tag tone="amber">Inferred · Coverage not guaranteed</Tag>
+              )}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
 export default function Tracker() {
+  const [view, setView] = useState<View>("workspace");
+  const [qualityReviewId, setQualityReviewId] = useState("");
   const [scenarioId, setScenarioId] = useState("crm"),
     [data, setData] = useState<Workspace | null>(null),
     [reply, setReply] = useState(""),
@@ -91,10 +198,25 @@ export default function Tracker() {
     !review.assessment.failure,
   );
   useEffect(() => {
+    function syncView() {
+      const hash = window.location.hash.slice(1);
+      setView(views.find((item) => item.id === hash)?.id || "workspace");
+    }
+    syncView();
+    window.addEventListener("hashchange", syncView);
+    return () => window.removeEventListener("hashchange", syncView);
+  }, []);
+  useEffect(() => {
+    if (!loading && data && view !== "workspace") {
+      document.getElementById(view)?.focus({ preventScroll: true });
+    }
+  }, [view, loading, data]);
+  useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError("");
     setReview(null);
+    setQualityReviewId("");
     setSelected([]);
     setNotice("");
     fetch(`/api/workspace?scenario=${encodeURIComponent(scenarioId)}`, {
@@ -201,6 +323,8 @@ export default function Tracker() {
     );
   }
   function viewHistory(item: Review) {
+    setView("workspace");
+    window.location.hash = "workspace";
     setReply(item.reply);
     setSupport(item.hubspotSupported);
     setMode(item.assessment.mode);
@@ -216,13 +340,29 @@ export default function Tracker() {
         drafts,
       }),
     );
-    resultRef.current?.scrollIntoView({ behavior: "smooth" });
+    setTimeout(() => {
+      resultRef.current?.scrollIntoView({ behavior: "smooth" });
+      resultRef.current?.focus({ preventScroll: true });
+    }, 0);
   }
   const ctx = data?.context,
     activeFacts = ctx?.facts.filter((f) => f.status !== "superseded") || [];
   const dependentCount = review?.impacts.filter((i) => i.affected).length || 0;
   const events = data?.audit || [],
     reviews = data?.reviews || [];
+  const qualityReview =
+    reviews.find((r) => r.id === qualityReviewId) || reviews.at(-1);
+  const outstandingFollowups =
+    ctx?.outreach.filter(
+      (message) =>
+        ["queued", "draft"].includes(message.status) &&
+        ctx.facts.some(
+          (f) =>
+            f.status === "superseded" &&
+            (message.factIds.includes(f.id) ||
+              message.claims.some((claim) => claim.factIds.includes(f.id))),
+        ),
+    ) || [];
   const generationOutputTokens = reviews.reduce(
     (sum, r) => sum + (r.assessment.usage?.generationOutputTokens || 0),
     0,
@@ -256,20 +396,7 @@ export default function Tracker() {
             <small>Fictional seller · Local demo</small>
           </div>
         </div>
-        <nav aria-label="Workspace navigation">
-          <a href="#workspace" className="nav-active">
-            <span>◫</span>Reply review<Tag>12</Tag>
-          </a>
-          <a href="#followups">
-            <span>↗</span>Local follow-ups
-          </a>
-          <a href="#history">
-            <span>◷</span>Review history
-          </a>
-          <a href="#quality">
-            <span>▥</span>Quality & usage
-          </a>
-        </nav>
+        <WorkspaceNav view={view} navigate={setView} />
         <div className="sidebar-bottom">
           <span className="dot" />
           Proposed module for Rhycon<p>No connector or endorsement claimed.</p>
@@ -278,7 +405,8 @@ export default function Tracker() {
       <div className="main-shell">
         <header className="topbar">
           <span>
-            Workspace <span className="slash">/</span> Reply review
+            Workspace <span className="slash">/</span>{" "}
+            {views.find((item) => item.id === view)?.label}
           </span>
           <div>
             <Tag tone="green">Fictional data</Tag>
@@ -288,6 +416,7 @@ export default function Tracker() {
           </div>
         </header>
         <main id="workspace">
+          <WorkspaceNav view={view} navigate={setView} mobile />
           <div className="page-heading">
             <div>
               <p className="eyebrow">BUYER CORRECTION TRACKER</p>
@@ -383,7 +512,7 @@ export default function Tracker() {
                   </Tag>
                 </div>
               </section>
-              <div className="workspace-grid">
+              <div hidden={view !== "workspace"} className="workspace-grid">
                 <section className="panel belief-panel">
                   <div className="panel-heading">
                     <span className="step">1</span>
@@ -531,6 +660,7 @@ export default function Tracker() {
                 </section>
               </div>
               <section
+                hidden={view !== "workspace"}
                 ref={resultRef}
                 tabIndex={-1}
                 className="results-section"
@@ -646,68 +776,11 @@ export default function Tracker() {
                         ⓘ {warning}
                       </p>
                     ))}
-                    <div id="followups" className="section-title">
+                    <div className="section-title">
                       <h2>Affected follow-ups</h2>
                       <span>{dependentCount} need attention</span>
                     </div>
-                    <div className="followup-list">
-                      {ctx.outreach.map((message) => {
-                        const impact = review.impacts.find(
-                            (i) => i.messageId === message.id,
-                          ),
-                          sent = message.status === "sent",
-                          affected = impact?.affected;
-                        return (
-                          <article
-                            className={`followup-card ${affected ? "affected" : ""}`}
-                            key={message.id}
-                          >
-                            <div className="followup-heading">
-                              <h3>
-                                {sent
-                                  ? "Already sent"
-                                  : message.factIds.length
-                                    ? "Fact-dependent follow-up"
-                                    : "General introduction"}
-                              </h3>
-                              <Tag
-                                tone={
-                                  sent
-                                    ? "neutral"
-                                    : affected
-                                      ? "amber"
-                                      : "green"
-                                }
-                              >
-                                {sent
-                                  ? "Sent · History"
-                                  : message.status === "cancelled"
-                                    ? "Cancelled"
-                                    : message.status === "paused"
-                                      ? "Paused"
-                                      : affected
-                                        ? "Needs review"
-                                        : "Unaffected"}
-                              </Tag>
-                            </div>
-                            <p>{message.body}</p>
-                            <div className="followup-meta">
-                              <span>
-                                {sent
-                                  ? "Kept in history. Sent email cannot be recalled here."
-                                  : impact?.reason ||
-                                    "No repair proposed for this message."}
-                              </span>
-                              {impact?.discovery === "inferred" && (
-                                <Tag tone="amber">
-                                  Inferred · Coverage not guaranteed
-                                </Tag>
-                              )}
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
+                    <FollowupList context={ctx} review={review} stale={stale} />
                     {review.actions.length > 0 && (
                       <section className="approval-panel">
                         <div className="section-title">
@@ -866,7 +939,45 @@ export default function Tracker() {
                   </>
                 )}
               </section>
-              <section id="history" className="history-section">
+              {view === "followups" && (
+                <section
+                  id="followups"
+                  tabIndex={-1}
+                  className="results-section"
+                  aria-label="Local follow-ups"
+                >
+                  <div className="section-title">
+                    <h2>Local follow-ups</h2>
+                    <Tag>{ctx.outreach.length} messages</Tag>
+                  </div>
+                  <p>
+                    Current saved messages for {String(ctx.company.name)}.
+                    Review a prospect reply before approving repairs. No email
+                    is sent from this demo.
+                  </p>
+                  {(!review || stale || review.assessment.failure) && (
+                    <p className="subtle-callout">
+                      {stale
+                        ? "Your inputs changed. Evaluate again for current impact judgments."
+                        : "Impact judgments appear after a successful evaluation. Saved statuses are shown below."}
+                    </p>
+                  )}
+                  <FollowupList context={ctx} review={review} stale={stale} />
+                  <a
+                    className="text-button"
+                    href="#workspace"
+                    onClick={() => setView("workspace")}
+                  >
+                    Review reply and choose repairs
+                  </a>
+                </section>
+              )}
+              <section
+                id="history"
+                tabIndex={-1}
+                hidden={view !== "workspace" && view !== "history"}
+                className="history-section"
+              >
                 <div className="section-title">
                   <div>
                     <p className="eyebrow">A CLEAR PAPER TRAIL</p>
@@ -981,11 +1092,80 @@ export default function Tracker() {
                   </div>
                 </div>
               </section>
-              <section id="quality" className="panel quality-panel">
+              <section
+                id="quality"
+                tabIndex={-1}
+                hidden={view !== "workspace" && view !== "quality"}
+                className="panel quality-panel"
+              >
                 <div className="section-title">
-                  <h2>Quality & usage</h2>
+                  <h2>Data quality & usage</h2>
                   <Tag>Local observations</Tag>
                 </div>
+                <p>
+                  These observations cover the selected scenario:{" "}
+                  {data?.scenario.title}. They update when you evaluate, approve
+                  repairs, or record feedback.
+                </p>
+                <h3>Research quality</h3>
+                <div className="metrics">
+                  <div>
+                    <strong>{activeFacts.length}</strong>
+                    <span>Current facts</span>
+                  </div>
+                  <div>
+                    <strong>
+                      {
+                        activeFacts.filter(
+                          (f) => f.buyerReported && !f.operatorEdited,
+                        ).length
+                      }
+                    </strong>
+                    <span>Buyer-reported facts</span>
+                  </div>
+                  <div>
+                    <strong>
+                      {
+                        ctx.facts.filter((f) => f.status === "superseded")
+                          .length
+                      }
+                    </strong>
+                    <span>Superseded facts preserved</span>
+                  </div>
+                  <div>
+                    <strong>
+                      {
+                        activeFacts.filter(
+                          (f) =>
+                            !ctx.evidence.some((e) => e.id === f.evidenceId),
+                        ).length
+                      }
+                    </strong>
+                    <span>Current facts missing evidence</span>
+                  </div>
+                </div>
+                <p>
+                  Research inferences and buyer statements retain their sources;
+                  they are not independently verified. Operator-edited values
+                  are labelled separately in research history.
+                </p>
+                <p>
+                  <strong>
+                    {outstandingFollowups.length} pending follow-ups still
+                    reference superseded research.
+                  </strong>{" "}
+                  {outstandingFollowups.length
+                    ? "Their repair remains outstanding."
+                    : "No pending messages reference superseded research."}
+                </p>
+                <a
+                  className="text-button"
+                  href="#followups"
+                  onClick={() => setView("followups")}
+                >
+                  Inspect local follow-ups
+                </a>
+                <h3>Evaluation feedback</h3>
                 <div className="metrics">
                   <div>
                     <strong>
@@ -1018,6 +1198,65 @@ export default function Tracker() {
                     <span>Reported incorrect flags</span>
                   </div>
                 </div>
+                {qualityReview ? (
+                  <div className="quality-feedback">
+                    <label htmlFor="quality-review">Evaluation to assess</label>
+                    <select
+                      id="quality-review"
+                      value={qualityReview.id}
+                      disabled={busy}
+                      onChange={(e) => setQualityReviewId(e.target.value)}
+                    >
+                      {[...reviews].reverse().map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {date(r.createdAt)} ·{" "}
+                          {outcomeLabel[r.assessment.outcome]} ·{" "}
+                          {r.assessment.mode} · {r.state.replaceAll("_", " ")} ·{" "}
+                          {r.id.slice(-6)}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="feedback">
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() =>
+                          act("feedback", {
+                            reviewId: qualityReview.id,
+                            kind: "missed_correction",
+                          })
+                        }
+                      >
+                        Report a missed correction
+                      </button>
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() =>
+                          act("feedback", {
+                            reviewId: qualityReview.id,
+                            kind: "incorrectly_flagged",
+                          })
+                        }
+                      >
+                        Report an incorrect flag
+                      </button>
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() => viewHistory(qualityReview)}
+                      >
+                        Open selected evaluation
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="subtle-callout">
+                    No evaluations yet. Evaluate a reply in Reply review to
+                    record quality feedback. Practice mode needs no API key.
+                  </p>
+                )}
+                <h3>API usage</h3>
                 <p>
                   Returned input tokens: Decisions {tokens.toLocaleString()} ·
                   Generation {generationTokens.toLocaleString()}.{" "}
