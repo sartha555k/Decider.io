@@ -18,8 +18,8 @@ Final local results on 10 October 2026 (Asia/Calcutta):
 
 | Check                          | Result                                            |
 | ------------------------------ | ------------------------------------------------- |
-| Unit/integration tests         | 58 passed, 0 failed                               |
-| Browser tests                  | 22 passed, 0 failed (desktop and mobile Chromium) |
+| Unit/integration tests         | 65 passed, 0 failed                               |
+| Browser tests                  | 24 passed, 0 failed (desktop and mobile Chromium) |
 | Production build               | Passed                                            |
 | TypeScript                     | Passed                                            |
 | Prettier / patch whitespace    | Passed                                            |
@@ -32,6 +32,6 @@ Unit/integration calls are mocked or simulated. Browser tests isolate their data
 
 Live OpenAI behavior remains unverified until server credentials, account/model access, and reviewed Decisions pricing are configured. The official Decisions guide and SDK protocol were verified; this does not establish account authorization.
 
-This is a local single-operator demonstration without authentication, real mail delivery, meeting booking, external record updates, or a Rhycon connector. A public hosted deployment is not provisioned by these commands; use the prepared server or run the documented preview commands in the selected environment.
+This is a single-operator demonstration with shared password protection for hosted private access. It has no individual accounts, real mail delivery, meeting booking, external record updates, or a Rhycon connector. The Render Blueprint and private access controls are prepared; an actual hosted service has not been provisioned. See the [deployment guide](render-deployment.md).
 
 Practice parsing is intentionally bounded to demonstrable correction patterns. Inferred retrieval does not guarantee full dependency coverage. Model probabilities and cost estimates are not guarantees; quality counters represent local operator feedback, not measured accuracy or revenue impact.

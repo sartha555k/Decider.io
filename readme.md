@@ -20,6 +20,10 @@ npm run build
 npm start
 ```
 
+Production requires `TRACKER_AUTH_USERNAME` and a `TRACKER_AUTH_PASSWORD` of at least 16 characters in server-side environment settings. The username accepts letters, numbers, dots, underscores, and hyphens. Configure them before starting the preview; missing or invalid settings make production return 503. The browser prompts for these credentials. Development stays open only when both access settings are unset.
+
+For a hosted private pilot, see the [Render deployment guide](docs/render-deployment.md) and [Blueprint](render.yaml). The integrated Next.js app serves both the interface and API on one service with persistent SQLite storage.
+
 The SQLite database is created automatically at `data/tracker.sqlite`. Set `TRACKER_DATABASE_PATH` to a persistent writable location to override it. Live processes must be restarted after environment restoration. Keep the database, WAL, and SHM files together when backing up a running database, or stop the app before copying the database file.
 
 ## Try the workflow
@@ -36,7 +40,7 @@ Use **Local follow-ups** in the desktop sidebar or mobile navigation to inspect 
 
 An explicit opt-out immediately suppresses the replying contact and cancels their pending local outreach. It never generates a new pitch. Approved internal repairs can be reverted through a new audited action only while their records remain unchanged. Reversal preserves buyer evidence and increments record versions. Future external integrations may have different reversal limits.
 
-This is a **single-operator local demonstration**, not an authenticated multi-user SaaS deployment. All sample data is fictional. No real email sending, meeting booking, external CRM update, or invented Rhycon connector is included.
+This is a **single-operator demonstration** with a shared operator password for hosted private access. It does not provide individual user accounts or roles. All sample data is fictional. No real email sending, meeting booking, external CRM update, or invented Rhycon connector is included.
 
 ## OpenAI integration
 
@@ -69,7 +73,7 @@ CI runs these checks for PRs into `dev` and pushes to `dev`. Generated browser r
 - `src/lib/scenarios.ts`: twelve fictional, independently scoped seller/prospect workspaces.
 - `src/lib/engine.ts`: practice evaluation, explicit/inferred dependencies, and application routing rules.
 - `src/lib/service.ts`: ingestion, persistent reviews, scoped approvals, audit events, and reversal.
-- `src/lib/openai.ts`: the documented Decisions protocol and separate Structured Outputs calls.
+- `src/lib/openai.ts`: the documented Decisions protocol; Live mode makes no generation calls.
 - `src/app/api/workspace/route.ts`: bounded local request boundary; future authorized ingestion can call the service without inventing a provider connector.
 - `src/app/tracker.tsx`: the operator interface.
 
@@ -81,7 +85,7 @@ The fixtures use an explicit reference date of **10 October 2026** and **Asia/Ca
 
 See the [founder demonstration script](docs/founder-demo.md), [validation record](docs/validation.md), and [desktop](docs/images/review-desktop.png)/[mobile](docs/images/review-mobile.png) screenshots.
 
-`main` is untouched. `dev` originates from `main`; each feature branch originates from the updated `dev`, and tested PRs merge into `dev`. The implementation is split into foundation, correction engine, approval/audit, OpenAI integration, operator interface, and validation/documentation PRs.
+`dev` originates from `main`; each feature branch originates from the updated `dev`, and tested PRs merge into `dev`. The initial release was promoted to `main` through PR #8. Later fixes and deployment preparation remain on `dev`; the Render Blueprint deploys that branch manually. The implementation is split into foundation, correction engine, approval/audit, OpenAI integration, operator interface, and validation/documentation PRs.
 
 ## Low-cost API defaults
 
