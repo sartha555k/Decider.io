@@ -1,3 +1,4 @@
+import { accessDenial } from "../../../lib/access";
 import { NextResponse } from "next/server";
 import { openDatabase, listEntities } from "../../../lib/database";
 import {
@@ -36,6 +37,8 @@ function response(db: ReturnType<typeof openDatabase>, id: string) {
   };
 }
 export async function GET(request: Request) {
+  const denied = accessDenial(request.headers.get("authorization"));
+  if (denied) return denied;
   const db = openDatabase();
   try {
     const id = new URL(request.url).searchParams.get("scenario") || "crm";
@@ -54,6 +57,8 @@ export async function GET(request: Request) {
   }
 }
 export async function POST(request: Request) {
+  const denied = accessDenial(request.headers.get("authorization"));
+  if (denied) return denied;
   const origin = request.headers.get("origin");
   if (
     origin &&
@@ -111,13 +116,9 @@ export async function POST(request: Request) {
           "live",
           (ctx, reply, support) => {
             reserveLiveEvaluation(db);
-            return evaluateLive(ctx, reply, support, transport, {
-              generateDrafts: input.generateDrafts === true,
-            });
+            return evaluateLive(ctx, reply, support, transport);
           },
-          integrationRevision +
-            String(input.generateDrafts) +
-            String(process.env.TRACKER_GENERATION_MODEL || "gpt-6-luna"),
+          integrationRevision,
         );
       } else
         review = await evaluate(

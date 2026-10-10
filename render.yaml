@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: buyer-correction-tracker
+    runtime: node
+    repo: https://github.com/sartha555k/Decider.io
+    branch: main
+    plan: starter
+    numInstances: 1
+    autoDeployTrigger: "off"
+    buildCommand: npm ci --no-audit --no-fund && npm run build
+    startCommand: TRACKER_APP_ORIGIN="${TRACKER_APP_ORIGIN:-https://$RENDER_EXTERNAL_HOSTNAME}" npm start -- --port $PORT
+    healthCheckPath: /api/health
+    disk:
+      name: tracker-data
+      mountPath: /var/data/tracker
+      sizeGB: 1
+    envVars:
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: TRACKER_DATABASE_PATH
+        value: /var/data/tracker/tracker.sqlite
+      - key: TRACKER_AUTH_USERNAME
+        value: operator
+      - key: TRACKER_AUTH_PASSWORD
+        generateValue: true
+      - key: TRACKER_OPENAI_KEY
+        sync: false
+      - key: TRACKER_DECISION_INPUT_USD_PER_MILLION
+        value: "0.10"
+      - key: TRACKER_DAILY_BUDGET_USD
+        value: "0.05"
+      - key: TRACKER_MONTHLY_BUDGET_USD
+        value: "1"
+      - key: TRACKER_DAILY_LIVE_EVALUATIONS
+        value: "2"

@@ -114,5 +114,7 @@ export interface Review extends Entity {
   approvedBy?: string;
   selectedActionIds?: string[];
   operatorEdits?: Record<string, string>;
+  comparedFacts?: Pick<Fact, "id" | "field" | "value" | "scope" | "version">[];
+  cacheHit?: boolean;
   latencyMs: number;
 }

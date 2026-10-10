@@ -13,9 +13,8 @@ interface Workspace {
   connection: { configured: boolean; model: string; status: string };
   pricing: {
     decisionInput: number;
-    generationInput: number | null;
-    generationOutput: number | null;
     dailyBudget: number;
+    monthlyBudget: number;
     dailyEvaluations: number;
   };
   review?: Review;
@@ -59,13 +58,119 @@ function date(value: unknown) {
       })
     : "Date unknown";
 }
+type View = "workspace" | "followups" | "history" | "quality";
+const views: { id: View; label: string; icon: string }[] = [
+  { id: "workspace", label: "Reply review", icon: "◫" },
+  { id: "followups", label: "Local follow-ups", icon: "↗" },
+  { id: "history", label: "Review history", icon: "◷" },
+  { id: "quality", label: "Data quality & usage", icon: "▥" },
+];
+function WorkspaceNav({
+  view,
+  navigate,
+  mobile = false,
+}: {
+  view: View;
+  navigate: (view: View) => void;
+  mobile?: boolean;
+}) {
+  return (
+    <nav
+      aria-label={
+        mobile ? "Mobile workspace navigation" : "Workspace navigation"
+      }
+      className={mobile ? "mobile-navigation" : undefined}
+    >
+      {views.map((item) => (
+        <a
+          key={item.id}
+          href={`#${item.id}`}
+          onClick={() => navigate(item.id)}
+          className={view === item.id ? "nav-active" : undefined}
+          aria-current={view === item.id ? "page" : undefined}
+        >
+          <span aria-hidden="true">{item.icon}</span>
+          {item.label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+function FollowupList({
+  context,
+  review,
+  stale,
+}: {
+  context: Context;
+  review: Review | null;
+  stale: boolean;
+}) {
+  return (
+    <div className="followup-list">
+      {context.outreach.map((message) => {
+        const impact =
+            !stale && !review?.assessment.failure
+              ? review?.impacts.find((i) => i.messageId === message.id)
+              : undefined,
+          sent = message.status === "sent",
+          affected = impact?.affected;
+        return (
+          <article
+            className={`followup-card ${affected ? "affected" : ""}`}
+            key={message.id}
+          >
+            <div className="followup-heading">
+              <h3>
+                {sent
+                  ? "Already sent"
+                  : message.factIds.length
+                    ? "Fact-dependent follow-up"
+                    : "General introduction"}
+              </h3>
+              <Tag tone={sent ? "neutral" : affected ? "amber" : "green"}>
+                {sent
+                  ? "Sent · History"
+                  : message.status === "cancelled"
+                    ? "Cancelled"
+                    : message.status === "paused"
+                      ? "Paused"
+                      : affected
+                        ? "Needs review"
+                        : impact
+                          ? "Unaffected"
+                          : message.status === "queued"
+                            ? "Queued"
+                            : "Draft"}
+              </Tag>
+            </div>
+            <p>{message.body}</p>
+            <div className="followup-meta">
+              <span>
+                {sent
+                  ? "Kept in history. Sent email cannot be recalled here."
+                  : impact?.reason ||
+                    (!stale && review && !review.assessment.failure
+                      ? "No repair proposed for this message."
+                      : "Evaluate the prospect reply to check whether this follow-up needs repair.")}
+              </span>
+              {impact?.discovery === "inferred" && (
+                <Tag tone="amber">Inferred · Coverage not guaranteed</Tag>
+              )}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
 export default function Tracker() {
+  const [view, setView] = useState<View>("workspace");
+  const [qualityReviewId, setQualityReviewId] = useState("");
   const [scenarioId, setScenarioId] = useState("crm"),
     [data, setData] = useState<Workspace | null>(null),
     [reply, setReply] = useState(""),
     [support, setSupport] = useState(true),
     [mode, setMode] = useState<"practice" | "live">("practice"),
-    [drafts, setDrafts] = useState(false),
     [review, setReview] = useState<Review | null>(null),
     [selected, setSelected] = useState<string[]>([]),
     [edits, setEdits] = useState<Record<string, string>>({}),
@@ -80,7 +185,6 @@ export default function Tracker() {
     reply,
     support,
     mode,
-    drafts,
   });
   const stale = Boolean(review && signature !== evaluatedInputs);
   const canApprove = Boolean(
@@ -91,10 +195,25 @@ export default function Tracker() {
     !review.assessment.failure,
   );
   useEffect(() => {
+    function syncView() {
+      const hash = window.location.hash.slice(1);
+      setView(views.find((item) => item.id === hash)?.id || "workspace");
+    }
+    syncView();
+    window.addEventListener("hashchange", syncView);
+    return () => window.removeEventListener("hashchange", syncView);
+  }, []);
+  useEffect(() => {
+    if (!loading && data && view !== "workspace") {
+      document.getElementById(view)?.focus({ preventScroll: true });
+    }
+  }, [view, loading, data]);
+  useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     setError("");
     setReview(null);
+    setQualityReviewId("");
     setSelected([]);
     setNotice("");
     fetch(`/api/workspace?scenario=${encodeURIComponent(scenarioId)}`, {
@@ -134,7 +253,6 @@ export default function Tracker() {
           reply,
           hubspotSupported: support,
           mode,
-          generateDrafts: drafts,
           ...extra,
         }),
       });
@@ -201,6 +319,8 @@ export default function Tracker() {
     );
   }
   function viewHistory(item: Review) {
+    setView("workspace");
+    window.location.hash = "workspace";
     setReply(item.reply);
     setSupport(item.hubspotSupported);
     setMode(item.assessment.mode);
@@ -213,28 +333,42 @@ export default function Tracker() {
         reply: item.reply,
         support: item.hubspotSupported,
         mode: item.assessment.mode,
-        drafts,
       }),
     );
-    resultRef.current?.scrollIntoView({ behavior: "smooth" });
+    setTimeout(() => {
+      resultRef.current?.scrollIntoView({ behavior: "smooth" });
+      resultRef.current?.focus({ preventScroll: true });
+    }, 0);
   }
   const ctx = data?.context,
     activeFacts = ctx?.facts.filter((f) => f.status !== "superseded") || [];
   const dependentCount = review?.impacts.filter((i) => i.affected).length || 0;
   const events = data?.audit || [],
     reviews = data?.reviews || [];
-  const generationOutputTokens = reviews.reduce(
-    (sum, r) => sum + (r.assessment.usage?.generationOutputTokens || 0),
+  const qualityReview =
+    reviews.find((r) => r.id === qualityReviewId) || reviews.at(-1);
+  const outstandingFollowups =
+    ctx?.outreach.filter(
+      (message) =>
+        ["queued", "draft"].includes(message.status) &&
+        ctx.facts.some(
+          (f) =>
+            f.status === "superseded" &&
+            (message.factIds.includes(f.id) ||
+              message.claims.some((claim) => claim.factIds.includes(f.id))),
+        ),
+    ) || [];
+  const tokens = reviews.reduce(
+    (total, r) => total + (r.assessment.usage?.decisionInputTokens || 0),
     0,
   );
-  const tokens = reviews.reduce(
-      (total, r) => total + (r.assessment.usage?.decisionInputTokens || 0),
-      0,
-    ),
-    generationTokens = reviews.reduce(
-      (total, r) => total + (r.assessment.usage?.generationInputTokens || 0),
-      0,
-    );
+  const historicalGenerationTokens = reviews.reduce(
+    (total, r) =>
+      total +
+      (r.assessment.usage?.generationInputTokens || 0) +
+      (r.assessment.usage?.generationOutputTokens || 0),
+    0,
+  );
   return (
     <div className="app-shell">
       <a href="#workspace" className="skip-link">
@@ -256,20 +390,7 @@ export default function Tracker() {
             <small>Fictional seller · Local demo</small>
           </div>
         </div>
-        <nav aria-label="Workspace navigation">
-          <a href="#workspace" className="nav-active">
-            <span>◫</span>Reply review<Tag>12</Tag>
-          </a>
-          <a href="#followups">
-            <span>↗</span>Local follow-ups
-          </a>
-          <a href="#history">
-            <span>◷</span>Review history
-          </a>
-          <a href="#quality">
-            <span>▥</span>Quality & usage
-          </a>
-        </nav>
+        <WorkspaceNav view={view} navigate={setView} />
         <div className="sidebar-bottom">
           <span className="dot" />
           Proposed module for Rhycon<p>No connector or endorsement claimed.</p>
@@ -278,7 +399,8 @@ export default function Tracker() {
       <div className="main-shell">
         <header className="topbar">
           <span>
-            Workspace <span className="slash">/</span> Reply review
+            Workspace <span className="slash">/</span>{" "}
+            {views.find((item) => item.id === view)?.label}
           </span>
           <div>
             <Tag tone="green">Fictional data</Tag>
@@ -288,6 +410,7 @@ export default function Tracker() {
           </div>
         </header>
         <main id="workspace">
+          <WorkspaceNav view={view} navigate={setView} mobile />
           <div className="page-heading">
             <div>
               <p className="eyebrow">BUYER CORRECTION TRACKER</p>
@@ -383,7 +506,7 @@ export default function Tracker() {
                   </Tag>
                 </div>
               </section>
-              <div className="workspace-grid">
+              <div hidden={view !== "workspace"} className="workspace-grid">
                 <section className="panel belief-panel">
                   <div className="panel-heading">
                     <span className="step">1</span>
@@ -518,19 +641,16 @@ export default function Tracker() {
                       : data?.connection.status}
                   </p>
                   {mode === "live" && (
-                    <label className="draft-option">
-                      <input
-                        type="checkbox"
-                        checked={drafts}
-                        onChange={(e) => setDrafts(e.target.checked)}
-                        disabled={busy}
-                      />{" "}
-                      Generate optional draft suggestions (additional API usage)
-                    </label>
+                    <p className="muted">
+                      Decisions only · GPT-6 Luna. Corrected values use exact
+                      buyer statements for your review. No generated email
+                      drafts.
+                    </p>
                   )}
                 </section>
               </div>
               <section
+                hidden={view !== "workspace"}
                 ref={resultRef}
                 tabIndex={-1}
                 className="results-section"
@@ -553,7 +673,11 @@ export default function Tracker() {
                     >
                       {stale
                         ? "Inputs changed · Needs reevaluation"
-                        : review.state.replaceAll("_", " ")}
+                        : review.state === "needs_review" &&
+                            review.assessment.outcome === "no_correction" &&
+                            !review.actions.length
+                          ? "Ready to acknowledge"
+                          : review.state.replaceAll("_", " ")}
                     </Tag>
                   )}
                 </div>
@@ -588,7 +712,12 @@ export default function Tracker() {
                         {review.assessment.optOut ? "⊘" : "↔"}
                       </div>
                       <div>
-                        <h3>{outcomeLabel[review.assessment.outcome]}</h3>
+                        <h3>
+                          {review.assessment.mode === "live" &&
+                          review.assessment.outcome === "no_correction"
+                            ? "No new correction to saved research"
+                            : outcomeLabel[review.assessment.outcome]}
+                        </h3>
                         <p>
                           {review.assessment.optOut
                             ? "This contact is suppressed and pending local messages are cancelled. No new pitch is proposed."
@@ -607,6 +736,58 @@ export default function Tracker() {
                           : "Live OpenAI"}
                       </Tag>
                     </div>
+                    {review.assessment.mode === "live" &&
+                      review.assessment.outcome === "no_correction" && (
+                        <div className="panel comparison-explanation">
+                          <h3>Why there is no new correction</h3>
+                          <p>
+                            The model found no new correction to the saved
+                            research below. This comparison includes changes you
+                            previously approved. If CRM already says HubSpot,
+                            the HubSpot reply confirms it rather than changing
+                            Salesforce again.
+                          </p>
+                          <h4>
+                            {review.comparedFacts
+                              ? "Saved facts used in this evaluation"
+                              : "Current saved facts (this older review has no comparison snapshot)"}
+                          </h4>
+                          {(review.comparedFacts || activeFacts).map((f) => (
+                            <article key={f.id} className="history-item">
+                              <strong>
+                                {f.field}: {f.value}
+                              </strong>
+                              <small>
+                                {f.scope} scope · Version {f.version}
+                              </small>
+                            </article>
+                          ))}
+                          <p>
+                            To test the original scenario again, open Review
+                            history and revert the earlier internal repair if it
+                            is still eligible. Original evidence and approved
+                            changes stay in history.
+                          </p>
+                          <a
+                            className="text-button"
+                            href="#history"
+                            onClick={() => setView("history")}
+                          >
+                            Inspect earlier repairs
+                          </a>
+                          <p className="muted">
+                            If the saved facts below disagree with the reply,
+                            use Report a missed correction. A model judgment can
+                            be wrong.
+                          </p>
+                        </div>
+                      )}
+                    {review.assessment.mode === "live" && review.cacheHit && (
+                      <p className="subtle-callout">
+                        Saved evaluation reused · No new API request or spending
+                        reservation.
+                      </p>
+                    )}
                     {review.assessment.corrections.map((c) => {
                       const fact = ctx.facts.find((f) => f.id === c.factId);
                       return (
@@ -646,68 +827,11 @@ export default function Tracker() {
                         ⓘ {warning}
                       </p>
                     ))}
-                    <div id="followups" className="section-title">
+                    <div className="section-title">
                       <h2>Affected follow-ups</h2>
                       <span>{dependentCount} need attention</span>
                     </div>
-                    <div className="followup-list">
-                      {ctx.outreach.map((message) => {
-                        const impact = review.impacts.find(
-                            (i) => i.messageId === message.id,
-                          ),
-                          sent = message.status === "sent",
-                          affected = impact?.affected;
-                        return (
-                          <article
-                            className={`followup-card ${affected ? "affected" : ""}`}
-                            key={message.id}
-                          >
-                            <div className="followup-heading">
-                              <h3>
-                                {sent
-                                  ? "Already sent"
-                                  : message.factIds.length
-                                    ? "Fact-dependent follow-up"
-                                    : "General introduction"}
-                              </h3>
-                              <Tag
-                                tone={
-                                  sent
-                                    ? "neutral"
-                                    : affected
-                                      ? "amber"
-                                      : "green"
-                                }
-                              >
-                                {sent
-                                  ? "Sent · History"
-                                  : message.status === "cancelled"
-                                    ? "Cancelled"
-                                    : message.status === "paused"
-                                      ? "Paused"
-                                      : affected
-                                        ? "Needs review"
-                                        : "Unaffected"}
-                              </Tag>
-                            </div>
-                            <p>{message.body}</p>
-                            <div className="followup-meta">
-                              <span>
-                                {sent
-                                  ? "Kept in history. Sent email cannot be recalled here."
-                                  : impact?.reason ||
-                                    "No repair proposed for this message."}
-                              </span>
-                              {impact?.discovery === "inferred" && (
-                                <Tag tone="amber">
-                                  Inferred · Coverage not guaranteed
-                                </Tag>
-                              )}
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
+                    <FollowupList context={ctx} review={review} stale={stale} />
                     {review.actions.length > 0 && (
                       <section className="approval-panel">
                         <div className="section-title">
@@ -866,7 +990,45 @@ export default function Tracker() {
                   </>
                 )}
               </section>
-              <section id="history" className="history-section">
+              {view === "followups" && (
+                <section
+                  id="followups"
+                  tabIndex={-1}
+                  className="results-section"
+                  aria-label="Local follow-ups"
+                >
+                  <div className="section-title">
+                    <h2>Local follow-ups</h2>
+                    <Tag>{ctx.outreach.length} messages</Tag>
+                  </div>
+                  <p>
+                    Current saved messages for {String(ctx.company.name)}.
+                    Review a prospect reply before approving repairs. No email
+                    is sent from this demo.
+                  </p>
+                  {(!review || stale || review.assessment.failure) && (
+                    <p className="subtle-callout">
+                      {stale
+                        ? "Your inputs changed. Evaluate again for current impact judgments."
+                        : "Impact judgments appear after a successful evaluation. Saved statuses are shown below."}
+                    </p>
+                  )}
+                  <FollowupList context={ctx} review={review} stale={stale} />
+                  <a
+                    className="text-button"
+                    href="#workspace"
+                    onClick={() => setView("workspace")}
+                  >
+                    Review reply and choose repairs
+                  </a>
+                </section>
+              )}
+              <section
+                id="history"
+                tabIndex={-1}
+                hidden={view !== "workspace" && view !== "history"}
+                className="history-section"
+              >
                 <div className="section-title">
                   <div>
                     <p className="eyebrow">A CLEAR PAPER TRAIL</p>
@@ -981,11 +1143,80 @@ export default function Tracker() {
                   </div>
                 </div>
               </section>
-              <section id="quality" className="panel quality-panel">
+              <section
+                id="quality"
+                tabIndex={-1}
+                hidden={view !== "workspace" && view !== "quality"}
+                className="panel quality-panel"
+              >
                 <div className="section-title">
-                  <h2>Quality & usage</h2>
+                  <h2>Data quality & usage</h2>
                   <Tag>Local observations</Tag>
                 </div>
+                <p>
+                  These observations cover the selected scenario:{" "}
+                  {data?.scenario.title}. They update when you evaluate, approve
+                  repairs, or record feedback.
+                </p>
+                <h3>Research quality</h3>
+                <div className="metrics">
+                  <div>
+                    <strong>{activeFacts.length}</strong>
+                    <span>Current facts</span>
+                  </div>
+                  <div>
+                    <strong>
+                      {
+                        activeFacts.filter(
+                          (f) => f.buyerReported && !f.operatorEdited,
+                        ).length
+                      }
+                    </strong>
+                    <span>Buyer-reported facts</span>
+                  </div>
+                  <div>
+                    <strong>
+                      {
+                        ctx.facts.filter((f) => f.status === "superseded")
+                          .length
+                      }
+                    </strong>
+                    <span>Superseded facts preserved</span>
+                  </div>
+                  <div>
+                    <strong>
+                      {
+                        activeFacts.filter(
+                          (f) =>
+                            !ctx.evidence.some((e) => e.id === f.evidenceId),
+                        ).length
+                      }
+                    </strong>
+                    <span>Current facts missing evidence</span>
+                  </div>
+                </div>
+                <p>
+                  Research inferences and buyer statements retain their sources;
+                  they are not independently verified. Operator-edited values
+                  are labelled separately in research history.
+                </p>
+                <p>
+                  <strong>
+                    {outstandingFollowups.length} pending follow-ups still
+                    reference superseded research.
+                  </strong>{" "}
+                  {outstandingFollowups.length
+                    ? "Their repair remains outstanding."
+                    : "No pending messages reference superseded research."}
+                </p>
+                <a
+                  className="text-button"
+                  href="#followups"
+                  onClick={() => setView("followups")}
+                >
+                  Inspect local follow-ups
+                </a>
+                <h3>Evaluation feedback</h3>
                 <div className="metrics">
                   <div>
                     <strong>
@@ -1018,26 +1249,83 @@ export default function Tracker() {
                     <span>Reported incorrect flags</span>
                   </div>
                 </div>
+                {qualityReview ? (
+                  <div className="quality-feedback">
+                    <label htmlFor="quality-review">Evaluation to assess</label>
+                    <select
+                      id="quality-review"
+                      value={qualityReview.id}
+                      disabled={busy}
+                      onChange={(e) => setQualityReviewId(e.target.value)}
+                    >
+                      {[...reviews].reverse().map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {date(r.createdAt)} ·{" "}
+                          {outcomeLabel[r.assessment.outcome]} ·{" "}
+                          {r.assessment.mode} · {r.state.replaceAll("_", " ")} ·{" "}
+                          {r.id.slice(-6)}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="feedback">
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() =>
+                          act("feedback", {
+                            reviewId: qualityReview.id,
+                            kind: "missed_correction",
+                          })
+                        }
+                      >
+                        Report a missed correction
+                      </button>
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() =>
+                          act("feedback", {
+                            reviewId: qualityReview.id,
+                            kind: "incorrectly_flagged",
+                          })
+                        }
+                      >
+                        Report an incorrect flag
+                      </button>
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() => viewHistory(qualityReview)}
+                      >
+                        Open selected evaluation
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="subtle-callout">
+                    No evaluations yet. Evaluate a reply in Reply review to
+                    record quality feedback. Practice mode needs no API key.
+                  </p>
+                )}
+                <h3>API usage</h3>
                 <p>
-                  Returned input tokens: Decisions {tokens.toLocaleString()} ·
-                  Generation {generationTokens.toLocaleString()}.{" "}
+                  Returned Decisions input tokens: {tokens.toLocaleString()}.{" "}
                   {tokens > 0
                     ? `Estimated standard decision input cost: $${((tokens * (data?.pricing.decisionInput || 0)) / 1000000).toFixed(6)}.`
-                    : "No live token usage recorded."}{" "}
-                  {data?.pricing.generationInput !== null &&
-                  data?.pricing.generationOutput !== null &&
-                  generationTokens > 0
-                    ? `Estimated generation cost: $${((generationTokens * (data?.pricing.generationInput || 0) + generationOutputTokens * (data?.pricing.generationOutput || 0)) / 1000000).toFixed(6)} (input and output).`
-                    : "Generation cost unavailable until reviewed pricing and live usage are recorded."}
+                    : "No live token usage recorded."}
+                  {historicalGenerationTokens > 0 &&
+                    ` Older stored reviews contain ${historicalGenerationTokens.toLocaleString()} generation tokens. New evaluations use Decisions only.`}
                 </p>
                 <details>
                   <summary>Live usage limits</summary>
                   <p>
                     At most {data?.pricing.dailyEvaluations} uncached
                     evaluations per UTC day. Budget reservation limit: $
-                    {data?.pricing.dailyBudget}. Verified generation input and
-                    output prices must be configured before live evaluations can
-                    reserve spending.
+                    {data?.pricing.dailyBudget} per day and $
+                    {data?.pricing.monthlyBudget} per UTC calendar month. At
+                    most two Decisions API requests per evaluation. No Responses
+                    calls or generation pricing settings are needed. These app
+                    limits do not limit other uses of your API key.
                   </p>
                 </details>
                 <p className="muted">

@@ -172,7 +172,7 @@ export async function evaluate(
       r.cacheKey === key &&
       ["needs_review", "approved"].includes(String(r.state)),
   );
-  if (existing) return existing as Review;
+  if (existing) return { ...(existing as Review), cacheHit: true };
   let assessment: Assessment;
   if (mode === "live") {
     if (!evaluator)
@@ -221,6 +221,16 @@ export async function evaluate(
         .map((i) => i.messageId),
       state: assessment.failure ? "failed" : "needs_review",
       createdAt: new Date().toISOString(),
+      comparedFacts: ctx.facts
+        .filter((f) => f.status !== "superseded")
+        .map(({ id, field, value, scope, version }) => ({
+          id,
+          field,
+          value,
+          scope,
+          version,
+        })),
+      cacheHit: false,
       latencyMs: Math.round(performance.now() - start),
     };
     insertEntity(db, "reviews", result);
