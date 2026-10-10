@@ -10,7 +10,7 @@ import type { Assessment, Context, Correction, Scope } from "./domain";
 import { validateQuote } from "./engine";
 import { referenceDate, referenceTimezone } from "./fixtures";
 
-export const integrationRevision = "decisions-only-v3-2026-10-10";
+export const integrationRevision = "decisions-only-v4-comparison-2026-10-10";
 export interface Transport {
   decide(request: DecisionCreateParams): Promise<unknown>;
 }
@@ -210,7 +210,7 @@ export async function evaluateLive(
       ...facts.flatMap((f) => [
         choice(
           `relation:${f.id}`,
-          `${guard} Does the new reply confirm, contradict, supplement, leave unclear, or have no relation to fact ${f.id} (${f.category}: ${f.field}=${f.value})?`,
+          `${guard} Compare the buyer's current statement with the CURRENT SAVED prospect fact ${f.id} (${f.category}: ${f.field}=${f.value}, ${f.scope} scope). supported means the reply confirms this saved value; contradicted means it says this saved value is no longer true; new_information means it adds a different scoped fact; unclear means unresolved; unrelated means it says nothing about this fact. Seller integration support and whether this reply appeared in conversation history do not determine whether the prospect fact is correct.`,
           [
             "supported",
             "contradicted",
@@ -239,11 +239,18 @@ export async function evaluateLive(
     result.usage!.decisionInputTokens += first.tokens;
     if (first.answers.get("opt_out")!.choice === true)
       return { ...result, optOut: true, outcome: "opt_out" };
-    const changed = facts.filter((f) =>
-      ["contradicted", "new_information", "unclear"].includes(
-        String(first.answers.get(`relation:${f.id}`)!.choice),
-      ),
-    );
+    const changed = facts.filter((f) => {
+      const relation = first.answers.get(`relation:${f.id}`)!;
+      const scope = first.answers.get(`scope:${f.id}`)!;
+      return (
+        relation.confidence < 0.65 ||
+        ["contradicted", "new_information", "unclear"].includes(
+          String(relation.choice),
+        ) ||
+        (relation.choice === "supported" &&
+          (scope.confidence < 0.65 || scope.choice !== f.scope))
+      );
+    });
     if (!changed.length) {
       result.outcome =
         first.answers.size > 1 &&
@@ -265,6 +272,7 @@ export async function evaluateLive(
         evidence.confidence < 0.65 ||
         scope.choice === "unknown" ||
         relation.choice === "unclear" ||
+        ["supported", "unrelated"].includes(String(relation.choice)) ||
         !statement ||
         statement.text.length > 500;
       const quote = statement?.text || reply.trim();

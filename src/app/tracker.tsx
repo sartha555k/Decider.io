@@ -673,7 +673,11 @@ export default function Tracker() {
                     >
                       {stale
                         ? "Inputs changed · Needs reevaluation"
-                        : review.state.replaceAll("_", " ")}
+                        : review.state === "needs_review" &&
+                            review.assessment.outcome === "no_correction" &&
+                            !review.actions.length
+                          ? "Ready to acknowledge"
+                          : review.state.replaceAll("_", " ")}
                     </Tag>
                   )}
                 </div>
@@ -708,7 +712,12 @@ export default function Tracker() {
                         {review.assessment.optOut ? "⊘" : "↔"}
                       </div>
                       <div>
-                        <h3>{outcomeLabel[review.assessment.outcome]}</h3>
+                        <h3>
+                          {review.assessment.mode === "live" &&
+                          review.assessment.outcome === "no_correction"
+                            ? "No new correction to saved research"
+                            : outcomeLabel[review.assessment.outcome]}
+                        </h3>
                         <p>
                           {review.assessment.optOut
                             ? "This contact is suppressed and pending local messages are cancelled. No new pitch is proposed."
@@ -727,6 +736,58 @@ export default function Tracker() {
                           : "Live OpenAI"}
                       </Tag>
                     </div>
+                    {review.assessment.mode === "live" &&
+                      review.assessment.outcome === "no_correction" && (
+                        <div className="panel comparison-explanation">
+                          <h3>Why there is no new correction</h3>
+                          <p>
+                            The model found no new correction to the saved
+                            research below. This comparison includes changes you
+                            previously approved. If CRM already says HubSpot,
+                            the HubSpot reply confirms it rather than changing
+                            Salesforce again.
+                          </p>
+                          <h4>
+                            {review.comparedFacts
+                              ? "Saved facts used in this evaluation"
+                              : "Current saved facts (this older review has no comparison snapshot)"}
+                          </h4>
+                          {(review.comparedFacts || activeFacts).map((f) => (
+                            <article key={f.id} className="history-item">
+                              <strong>
+                                {f.field}: {f.value}
+                              </strong>
+                              <small>
+                                {f.scope} scope · Version {f.version}
+                              </small>
+                            </article>
+                          ))}
+                          <p>
+                            To test the original scenario again, open Review
+                            history and revert the earlier internal repair if it
+                            is still eligible. Original evidence and approved
+                            changes stay in history.
+                          </p>
+                          <a
+                            className="text-button"
+                            href="#history"
+                            onClick={() => setView("history")}
+                          >
+                            Inspect earlier repairs
+                          </a>
+                          <p className="muted">
+                            If the saved facts below disagree with the reply,
+                            use Report a missed correction. A model judgment can
+                            be wrong.
+                          </p>
+                        </div>
+                      )}
+                    {review.assessment.mode === "live" && review.cacheHit && (
+                      <p className="subtle-callout">
+                        Saved evaluation reused · No new API request or spending
+                        reservation.
+                      </p>
+                    )}
                     {review.assessment.corrections.map((c) => {
                       const fact = ctx.facts.find((f) => f.id === c.factId);
                       return (

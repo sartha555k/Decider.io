@@ -28,6 +28,8 @@ Select one of twelve clearly fictional scenarios. Edit the prospect reply and se
 
 Approve actions individually, edit proposed values or suggested drafts, or reject the proposal. Research changes preserve old facts and original evidence. Revised drafts remain paused. Changing inputs disables approval until reevaluation. Server-side version checks prevent stale repairs, and repeated approvals are safe.
 
+Live evaluation compares the reply with **current saved research**, including previously approved corrections. If CRM already says HubSpot, repeating the HubSpot reply normally produces no new correction. The result explains this and shows a snapshot of the compared facts. Reused evaluations are labelled as cached and make no new API request. To demonstrate the original change again, inspect Review history and revert the earlier repair when eligible; do not delete evidence or the database to reset a demonstration.
+
 Use **Local follow-ups** in the desktop sidebar or mobile navigation to inspect saved messages before evaluating. Their status is shown as queued, draft, paused, cancelled, or sent; an unevaluated message is not labelled unaffected. Return to **Reply review** to evaluate and approve repairs.
 
 **Data quality & usage** shows current facts, buyer-reported facts, preserved superseded facts, missing evidence, and pending follow-ups still referencing superseded research for the selected scenario. Select an evaluation to report a missed correction or an incorrect flag, or open it for review. Feedback is saved in the local audit history. Section links support reload and browser back/forward navigation.
