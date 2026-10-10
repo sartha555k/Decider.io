@@ -11,6 +11,11 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: "http://127.0.0.1:3100",
+    httpCredentials: {
+      username: "test-operator",
+      password: "test-password-32-characters-long",
+      send: "always",
+    },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     launchOptions: {
@@ -37,6 +42,8 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 60000,
     env: {
+      TRACKER_AUTH_USERNAME: "test-operator",
+      TRACKER_AUTH_PASSWORD: "test-password-32-characters-long",
       TRACKER_DATABASE_PATH: `/tmp/tracker-e2e-${Date.now()}.sqlite`,
       TRACKER_OPENAI_KEY: "",
       OPENAI_API_KEY: "",

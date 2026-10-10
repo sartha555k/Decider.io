@@ -402,3 +402,32 @@ test("a Live confirmation explains current HubSpot research and cached evaluatio
     .click();
   await expect(page.locator("#history")).toBeVisible();
 });
+
+test("private deployment challenges unauthenticated page and API access while health stays public", async ({
+  playwright,
+  request,
+}) => {
+  const anonymous = await playwright.request.newContext({
+    baseURL: "http://127.0.0.1:3100",
+    httpCredentials: undefined,
+  });
+  try {
+    for (const path of ["/", "/api/workspace?scenario=crm", "/icon.svg"]) {
+      const response = await anonymous.get(path);
+      expect(response.status(), path).toBe(401);
+      expect(response.headers()["www-authenticate"]).toContain("Basic");
+    }
+    const write = await anonymous.post("/api/workspace", {
+      data: { operation: "evaluate", scenarioId: "crm", mode: "live" },
+    });
+    expect(write.status()).toBe(401);
+    const health = await anonymous.get("/api/health");
+    expect(health.status()).toBe(200);
+    expect(await health.json()).toEqual({ status: "ok" });
+    expect((await request.get("/api/workspace?scenario=crm")).status()).toBe(
+      200,
+    );
+  } finally {
+    await anonymous.dispose();
+  }
+});
