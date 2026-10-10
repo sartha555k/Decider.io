@@ -3,7 +3,7 @@ services:
     name: buyer-correction-tracker
     runtime: node
     repo: https://github.com/sartha555k/Decider.io
-    branch: dev
+    branch: main
     plan: starter
     numInstances: 1
     autoDeployTrigger: "off"
